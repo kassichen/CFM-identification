@@ -242,6 +242,25 @@ class TaskSpec:
                         "clusters": design.get("clusters"),
                         "cluster_probabilities": design.get("cluster_probabilities"),
                     }
+                elif design.get("kind") == "unequal_probability_fixed_quota_binary_v1":
+                    declared_assignment = {
+                        "design_type": "randomized_experiment",
+                        "assignment_scheme": "unequal_probability_fixed_quota",
+                        "m": design.get("m"),
+                        "treated_sets": [list(s) for s in design["treated_sets"]]
+                            if design.get("treated_sets") is not None else None,
+                        "set_probabilities": list(design["set_probabilities"])
+                            if design.get("set_probabilities") is not None else None,
+                        "unit_weights": dict(design["unit_weights"])
+                            if design.get("unit_weights") is not None else None,
+                    }
+                elif design.get("kind") == "rerandomized_balanced_binary_v1":
+                    declared_assignment = {
+                        "design_type": "randomized_experiment",
+                        "assignment_scheme": "rerandomized_balanced",
+                        "base_design": design.get("base_design"),
+                        "balance_rule": design.get("balance_rule"),
+                    }
                 else:
                     raise ValueError("Public TaskSpec references an unsupported arm assignment scheme")
                 declared_grouping = contract.get("grouping", "strict_majority_ties_low")

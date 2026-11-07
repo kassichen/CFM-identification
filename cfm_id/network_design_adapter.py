@@ -70,6 +70,34 @@ def extra_science(c):
     return (fields.D6_CONDITION,) if c.assignment.kind == 'TWO_STAGE_QUOTA_MIXTURE' else ()
 
 
+def task1_design(assignment, network):
+    """Build the serializable task-1 design object from reviewed business fields.
+
+    The network supplies the complete node ordering; the review layer has
+    already validated treated-set alignment, unit-weight scope and balance-rule
+    completeness. Constructs the native pydantic design for exact enumeration.
+    """
+    from pfn_pipeline._internal.identification.schemas import (
+        UnequalProbabilityFixedQuotaDesignV1, RerandomizedBalancedDesignV1, CovariateBalanceRuleV1)
+    nodes = tuple(network.node_ids)
+    if assignment.kind == 'UNEQUAL_PROBABILITY_FIXED_QUOTA':
+        return UnequalProbabilityFixedQuotaDesignV1(
+            nodes=nodes, m=assignment.fixed_count,
+            treated_sets=tuple(tuple(s) for s in assignment.treated_sets) if assignment.treated_sets is not None else None,
+            set_probabilities=tuple(assignment.set_probabilities) if assignment.set_probabilities is not None else None,
+            unit_weights=dict(assignment.unit_weights) if assignment.unit_weights is not None else None)
+    if assignment.kind == 'RERANDOMIZED_BALANCED':
+        base = UnequalProbabilityFixedQuotaDesignV1(
+            nodes=nodes, m=assignment.fixed_count,
+            treated_sets=tuple(tuple(s) for s in assignment.treated_sets) if assignment.treated_sets is not None else None,
+            set_probabilities=tuple(assignment.set_probabilities) if assignment.set_probabilities is not None else None,
+            unit_weights=dict(assignment.unit_weights) if assignment.unit_weights is not None else None)
+        rule = CovariateBalanceRuleV1(
+            tolerance=assignment.balance_tolerance, covariates=assignment.balance_covariates)
+        return RerandomizedBalancedDesignV1(base_design=base, balance_rule=rule)
+    raise ValueError('TASK1_DESIGN_KIND_REQUIRED')
+
+
 def make_arm(c, network, *, source, evidence, authority='SYNTHETIC_TEST'):
     if authority not in ('SYNTHETIC_TEST', 'EXTERNAL_RESEARCH_REVIEW'):
         raise ValueError('EXPLICIT_RESEARCH_AUTHORITY_REQUIRED')
@@ -82,10 +110,21 @@ def make_arm(c, network, *, source, evidence, authority='SYNTHETIC_TEST'):
         'CLUSTER_BERNOULLI': native.make_cluster_bernoulli_arm_task,
         'MULTI_GROUP_FIXED_QUOTA': native.make_multi_group_quota_arm_task,
         'TWO_STAGE_QUOTA_MIXTURE': native.make_two_stage_quota_arm_task,
+        'UNEQUAL_PROBABILITY_FIXED_QUOTA': native.make_unequal_probability_fixed_quota_arm_task,
+        'RERANDOMIZED_BALANCED': native.make_rerandomized_balanced_arm_task,
     }
-    design = design_payload(c.assignment); design.pop('kind')
     signature = exposure_payload(c.exposure)
     grouping = signature.pop('grouping')
+    exposure_definition = 'strict_majority' if grouping == 'strict_majority_ties_low' else grouping
+    if c.assignment.kind in ('UNEQUAL_PROBABILITY_FIXED_QUOTA', 'RERANDOMIZED_BALANCED'):
+        design = task1_design(c.assignment, network)
+        return makers[c.assignment.kind](network, design=design, **signature,
+            node_id=c.target.population[0], own_treatment_value=c.target.first.own,
+            exposure_value=c.target.first.exposure, exposure_definition=exposure_definition,
+            source=source, evidence=evidence, admitted=True, synthetic=synthetic,
+            query_authority='TRUSTED_FIXTURE' if synthetic else 'HUMAN_CONFIRMED',
+            outcome_kind='continuous' if c.study.outcome_kind=='COUNT' else c.study.outcome_kind.lower())
+    design = design_payload(c.assignment); design.pop('kind')
     if c.assignment.kind == 'TWO_STAGE_QUOTA_MIXTURE':
         if c.first_stage_exclusion is None or c.first_stage_exclusion.status not in ('ADOPTED','PROPOSED'):
             raise ValueError('REVIEWABLE_D6_EXCLUSION_REQUIRED')
@@ -94,7 +133,7 @@ def make_arm(c, network, *, source, evidence, authority='SYNTHETIC_TEST'):
     return makers[c.assignment.kind](network, **design, **signature,
         node_id=c.target.population[0], own_treatment_value=c.target.first.own,
         exposure_value=c.target.first.exposure,
-        exposure_definition='strict_majority' if grouping=='strict_majority_ties_low' else grouping,
+        exposure_definition=exposure_definition,
         source=source, evidence=evidence, admitted=True, synthetic=synthetic,
         query_authority='TRUSTED_FIXTURE' if synthetic else 'HUMAN_CONFIRMED',
         outcome_kind='continuous' if c.study.outcome_kind=='COUNT' else c.study.outcome_kind.lower())

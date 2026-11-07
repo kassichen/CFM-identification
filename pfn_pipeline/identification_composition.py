@@ -28,6 +28,9 @@ from ._internal.identification.randomized_network_arm import (
 )
 from ._internal.identification.randomized_arm_family import AssignmentSpec, ExposureSpec, SupportEngine
 from ._internal.identification.schemas import HeterogeneousBernoulliDesignV1
+from ._internal.identification.schemas import UnequalProbabilityFixedQuotaDesignV1, RerandomizedBalancedDesignV1
+from ._internal.identification.randomized_arm_family.assignment import as_task1_dataclass
+from ._internal.identification.randomized_arm_family.task1_verifier import verify_joint_support as _verify_task1_joint_support
 from .identification import identify, replay_population_identification
 
 __all__ = [
@@ -250,15 +253,22 @@ def _check_term_support(batch: BatchIdentificationResult, term: ArmLinearTerm,
                if contract.grouping==GROUP_E3 else None)
     engine=AssignmentSpec(contract.design)
     engine._validate_network(net)
-    law=engine.conditional_neighbor_count_law(net,node,a,reference_nodes=reference)
-    produced=SupportEngine.from_count_law(law,grouping,s).joint_probability
-    neighbor_counts=None
-    if isinstance(contract.design,HeterogeneousBernoulliDesignV1):
-        from ._internal.identification.randomized_arm_family.assignment import neighbor_set
-        members=neighbor_set(net,node) if reference is None else set(reference)
-        neighbor_counts=_independent_count_masses(contract.design,members)
-    independently=_support_comparison(contract.design,net,node,a,(s,),
-                                      contract.grouping,reference,neighbor_counts)[s]
+    if isinstance(contract.design, (UnequalProbabilityFixedQuotaDesignV1, RerandomizedBalancedDesignV1)):
+        joint=SupportEngine.joint_support(network=net, assignment=engine, exposure=grouping, node_id=node)
+        produced=joint.get((a,s), Fraction(0))
+        oracle=_verify_task1_joint_support(network=net, design=as_task1_dataclass(contract.design),
+            exposure=grouping, node_id=node, proposed={})["oracle"]
+        independently=oracle.get((a,s), Fraction(0))
+    else:
+        law=engine.conditional_neighbor_count_law(net,node,a,reference_nodes=reference)
+        produced=SupportEngine.from_count_law(law,grouping,s).joint_probability
+        neighbor_counts=None
+        if isinstance(contract.design,HeterogeneousBernoulliDesignV1):
+            from ._internal.identification.randomized_arm_family.assignment import neighbor_set
+            members=neighbor_set(net,node) if reference is None else set(reference)
+            neighbor_counts=_independent_count_masses(contract.design,members)
+        independently=_support_comparison(contract.design,net,node,a,(s,),
+                                          contract.grouping,reference,neighbor_counts)[s]
     if produced!=independently or str(produced)!=cell['joint_support']:
         raise CompositionUnavailable('SOURCE_ARM_SUPPORT_INDEPENDENT_REPLAY_MISMATCH',str(term.coordinates))
     if cell['target_fingerprint'] != arm_target_fingerprint(net,contract,node,a,s):

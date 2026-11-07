@@ -97,3 +97,7 @@ R3观察性完整政策的记录适配位于`observational_diagnostics`：完整
 
 
 来源审核扩展见[事实来源合同](FACT_SOURCE_REVIEW_ZH.md)。新增事实字段要说明其归属、未知状态、直接引用及显式定义依赖；整份材料完整性另审，不能靠只展示已填字段证明无遗漏。格式模型由 `fact_wire_models` 按已有请求/解析配对选择；各 short_refs 事实家族均消费 `fact_reading_contracts` 为其登记的格式模型，不能另建不一致的宽松模型。`source_review` 为显式调用参数；下游审核必须绑定原答和该记录。新来源规则不自动补写候选，不得把来源审核升级为科学批准。
+
+## Task 1（网络拓展 / POINT 拓展）
+
+四项功能（不等概率固定名额 D7、重随机化 D8、加权暴露、分组暴露）与四类目标按「新数学方法 / 已有能力接入」义务交付：数学合同见 [Task 1 数学合同](TASK1_POINT_EXTENSION_MATH_ZH.md)，缺项/限制见 [缺项限制表](TASK1_LIMITATIONS_ZH.md)，组合表由 `examples/generate_task1_combination_lookup.py` 可复现生成，业务案例见 `examples/task1_business_case_reference.py`。实际完成、明确缺项（L1–L6）、可复现方法、未解决项均列于缺项限制表；加权/分组暴露未进证书后端、生产政策值后端 R1B/R2 未接入新设计，不得当作已接入能力登记。
