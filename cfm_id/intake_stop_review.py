@@ -53,7 +53,7 @@ def _worksheet(s, reading, authority, target_fields=None):
     audits = {a['query_id']: a for a in reading['report']['query_quality']}
     from cfm_id_llm.business_field_contract import SEMANTICS
     from cfm_id_llm.target_clarification_contract import question, field_path
-    allowed_fields = {f.name for f in SEMANTICS} | {'comparison_order'}
+    allowed_fields = {f.name for f in SEMANTICS} | {'comparison_order', 'outcome'}
     target_fields = {} if target_fields is None else target_fields
     if (type(target_fields) is not dict or any(qid not in audits or type(names) is not list
             or not names or any(type(f) is not str or f not in allowed_fields for f in names)
@@ -72,6 +72,18 @@ def _worksheet(s, reading, authority, target_fields=None):
         if not (issues or questions):
             continue
         actions = audits[qid]['actions']
+        # The target-first contract can explicitly preserve an unknown outcome.
+        # The legacy A2 audit still labels the missing definition as extraction
+        # work. Permit source review to classify this stop; never release it.
+        missing_outcome = (gate.get('target_first') or {}).get('outcomes', {}).get(qid, {})
+        outcome_gap_reviewable = (
+            missing_outcome.get('state') == 'MISSING' and bool(missing_outcome.get('refs'))
+            and any(x['field'] == 'outcome' for x in questions))
+        def reviewable_action(action):
+            return (outcome_gap_reviewable and action['code'] == 'A2_MISSING_OUTCOME'
+                    and action['field_path'] == 'units_variables.outcome')
+        extraction_actions = [x for x in actions if x['owner'] == 'A0_FORMULATOR']
+        only_reviewable_definition = bool(extraction_actions) and all(map(reviewable_action, extraction_actions))
         reviewed_paths = {'target.kind', *(field_path(x) for x in questions)}
         other_questions = [x for x in audits[qid]['business_questions'] if x['field_path'] not in reviewed_paths]
         # An unknown kind may reflect an undecided target. An OTHER kind or
@@ -79,8 +91,10 @@ def _worksheet(s, reading, authority, target_fields=None):
         gap_allowed = bool(questions) and all(
             (x['code'] == 'TARGET_REQUIRES_REVIEW' and q['target']['kind'] == 'UNRESOLVED') or
             (x['code'] == 'COMPARISON_DIRECTION_UNRESOLVED' and
-                any(z['field']=='comparison_order' for z in questions))
-            for x in issues) and not other_questions and not any(x['owner']=='A0_FORMULATOR' for x in actions)
+                any(z['field']=='comparison_order' for z in questions)) or
+            (x['code'] == 'CANONICAL_RECHECK_REQUIRED' and x['path'] == 'quality'
+                and only_reviewable_definition)
+            for x in issues) and not other_questions and all(map(reviewable_action, extraction_actions))
         items[qid] = dict(query_id=qid, business_goal=deepcopy(q['business_goal']),
             target_kind=q['target']['kind'], missing_coordinates=deepcopy(questions), wire_issues=deepcopy(issues),
             original_audit_actions=deepcopy(actions), other_business_questions=deepcopy(other_questions),

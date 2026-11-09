@@ -13,6 +13,37 @@ from examples.network_effect_dispatch_reference import setup, approval_records, 
 from examples.business_dispatch_reference import approve
 
 
+@pytest.mark.parametrize('field,value,phrase', [
+    ('graph_kind','UNKNOWN','是否有方向'),
+    ('edge_list_complete',None,'全部关系'),
+    ('edge_list_complete',False,'遗漏的关系'),
+    ('outcome_kind','UNKNOWN','取值含义'),
+    ('treatment','','取值编码'),
+    ('outcome','','结果指标'),
+    ('context','','对应的时期'),
+])
+def test_single_study_gap_asks_only_for_the_missing_fact(monkeypatch,field,value,phrase):
+    s,e,o,_=setup()
+    o['candidate']['study'][field]=value
+    before=deepcopy(o['candidate'])
+    monkeypatch.setattr(effects,'_compile',lambda *a,**kw:pytest.fail('Missing input reached mathematics'))
+    result=dispatch.execute(s,'q1',**o,research_protocol_selected=True)
+    assert result['state']=='NEEDS_INPUT' and not result['backend_called']
+    assert len(result['clarification_questions'])==1, result['clarification_questions']
+    assert phrase in result['clarification_questions'][0]
+    assert o['candidate']==before and result['certificate'] is None
+
+
+def test_unknown_evaluation_rule_asks_selection_basis_without_admitting_a_roster():
+    s,e,o,_=setup()
+    o['candidate']['target']['population_fixed_before_assignment']['value']=None
+    before=deepcopy(o['candidate'])
+    result=dispatch.execute(s,'q1',**o,research_protocol_selected=True)
+    assert result['clarification_questions']==[reading.population_contract.QUESTION]
+    assert result['state']=='NEEDS_INPUT' and not result['backend_called']
+    assert o['candidate']==before
+
+
 @pytest.mark.parametrize('qid',['q1','q2'])
 @pytest.mark.parametrize('population',['all','subset','single'])
 def test_business_population_and_signed_terms_match_exhaustive_assignment_oracle(qid,population):

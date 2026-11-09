@@ -24,7 +24,7 @@ class RoleTarget(legacy.Cited):
     evaluated: legacy.LocalArm
     population: list[str] | None
     aggregation: Literal['SINGLE', 'EQUAL_MEAN', 'OTHER', 'UNKNOWN']
-    population_fixed_before_assignment: legacy.Declaration
+    population_fixed_before_assignment: legacy.Declaration = legacy.Field(description=legacy.population_contract.RULE)
     remaining_assignment: Literal['ORIGINAL_DESIGN_CONDITIONAL', 'OTHER', 'UNKNOWN']
     remaining_source_ids: list[str]
     shared_outcome_and_context: legacy.Declaration

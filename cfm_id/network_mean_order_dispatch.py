@@ -44,6 +44,7 @@ def compile_reviewed(plan, row, records, authority):
     if any(sha(canonical_data(first[i])) != sha(canonical_data(second[i])) for i in (0, 2, 3, 4, 5)):
         raise DispatchError('CHECK_BLOCKED', 'MEAN_ORDER_COMMON_MODEL_MISMATCH')
     c = NetworkPolicyReading.model_validate(plan['endpoint_plans']['first']['facts'])
+    information = [c.information[i] for i in row['source_indices']]
     b = c.bounded_model
     t = plan['proposed_target']
     for side, values in compiled.items():
@@ -74,8 +75,8 @@ def compile_reviewed(plan, row, records, authority):
         mean_sufficiency_claim='NODE_OWN_AND_E1_SIGNATURE_DETERMINES_CONDITIONAL_MEAN',
         information_scope='EXACT_LISTED_SIGNATURE_MEANS_ONLY', availability='EXACT_POPULATION_VALUE',
         values=[dict(node=v.node, own=v.own, exposure=v.exposure, value=v.value)
-                for s in c.information for v in s.signature_cells],
-        a4_source='Source table: ' + sha([s.model_dump() for s in c.information]),
+                for s in information for v in s.signature_cells],
+        a4_source='Source table: ' + sha([s.model_dump() for s in information]),
         a4_provenance=provenance + '; exact information: ' + sha(b.listed_means_are_complete_information.model_dump()),
         bounds=[dict(node=v.node, lower=v.lower, upper=v.upper) for v in b.bounds],
         bounds_kind=b.bounds_kind, bounds_scope=b.bounds_scope,

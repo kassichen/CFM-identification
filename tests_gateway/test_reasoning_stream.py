@@ -1,5 +1,6 @@
 import io
 import json
+import ssl
 import unittest
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
@@ -121,7 +122,15 @@ class ReasoningStreamTests(unittest.TestCase):
         sock.settimeout.assert_called_once_with(871)
         connected.assert_called_once_with()
         self.assertEqual(conn.timeout, 871)
-        self.assertTrue(_TimedHandler(23, 871, connected)._context.check_hostname)
+        # Python 3.11 builds the default TLS context in HTTPSConnection;
+        # newer versions may already create it in HTTPSHandler. Inspect the
+        # connection produced by the handler, without opening a socket.
+        handler = _TimedHandler(23, 871, connected)
+        with patch.object(handler, 'do_open', side_effect=lambda factory, req, **kw:
+                          factory('example.org', **kw)):
+            secured = handler.https_open(Mock())
+        self.assertTrue(secured._context.check_hostname)
+        self.assertEqual(secured._context.verify_mode, ssl.CERT_REQUIRED)
 
     def test_http_failure_sanitized_no_body_no_retry(self):
         p = self.provider()

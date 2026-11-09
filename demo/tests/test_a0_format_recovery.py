@@ -17,7 +17,9 @@ def test_one_schema_retry_keeps_original_and_still_requires_review(tmp_path,monk
             if problem=='wire_type':
                 good['common']['assignment_family']={'value':'INDEPENDENT_BERNOULLI','state':'STATED','refs':[]}
             else:
-                good['common']['assignment_family']='OBSERVATIONAL'
+                # An observational regime may legitimately have an unknown assignment law.
+                # A specified randomized design still needs its original-law statement.
+                good['common']['assignment_family']='COMPLETE_RANDOMIZATION'
                 good['common']['assignment_law']='UNKNOWN'
         if stage=='a0_format_retry':
             body=json.loads(request['user_prompt'].split('本次格式检查反馈（不是新的业务材料）：\n')[1])

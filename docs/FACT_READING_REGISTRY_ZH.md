@@ -63,7 +63,7 @@ R3观察性固定政策在同一家族内提供 `observational_fact_profile="mea
 
 维护入口是 `policy_record_definitions`，公共解析仍在 `policy_evidence_dependencies`；政策均值和两政策差值共享此规则。来源工作表、绑定、诊断、重读及原生审核复用既有生命周期，不自动添加模型未选的来源。旧协议保持原请求。该配置仍为显式实验选项，四次事实读取的对照结果见[真实验收记录](NETWORK_DESIGN_LIVE_ACCEPTANCE_ZH.md#显式定义依赖接口的四次事实读取对照)。
 
-既有 R3、政策均值、差值合同测试分别在 `test_fact_reading_contracts`、`test_policy_reading_contracts`、`test_contrast_reading_contracts`。局部效应与 DAG 的原生正负例继续由原专项测试负责；`test_student_handoff` 检查五类共同登记、公共配置和三个教学链路。固定框架的 S87 只是验收索引，不是新数学分类。
+既有 R3、政策均值、差值合同测试分别在 `test_fact_reading_contracts`、`test_policy_reading_contracts`、`test_contrast_reading_contracts`。局部效应与 DAG 的原生正负例继续由原专项测试负责；`test_student_handoff` 检查八类共同登记、公共配置和三个教学链路；历史测试名称中的 `five` 保留兼容，不表示当前只有五类。固定框架的 S87 只是验收索引，不是新数学分类。
 
 ### 主政策、记录范围和状态引用的接口对照
 

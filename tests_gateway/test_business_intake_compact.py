@@ -52,9 +52,16 @@ def test_default_compact_binds_source_without_writing_raw_or_approving_science()
     assert dispatch.prepare_reader(s, 'q1')['state'] == 'REVIEW_REQUIRED'
 
 
-def test_compact_to_actual_dag_dispatch_and_independent_replay():
+@pytest.mark.parametrize('regime', ['UNRESOLVED', 'OBSERVATIONAL'])
+def test_compact_to_actual_dag_dispatch_and_independent_replay(regime):
     case, raw, facts = scenario()
+    raw['common']['assignment_family'] = regime
     s = receive(case, raw)
+    reading = work.inspect(s)
+    info = reading['report']['draft']['shared_draft']['information_design']
+    assert info['assignment_law']['basis'] == 'UNRESOLVED'
+    assert not reading['core_called'] and reading['scientific_review_required']
+    assert dispatch.prepare_reader(s, 'q1')['state'] == 'REVIEW_REQUIRED'
     s = work.configure_fact_format(s, 'source_hash')  # Legacy fact-wire compatibility.
     review = approve(dispatch.prepare_reader(s, 'q1')['query_worksheet'])
     entry = dispatch.prepare_reader(s, 'q1', query_review=review)

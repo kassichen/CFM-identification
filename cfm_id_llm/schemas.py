@@ -155,7 +155,11 @@ class InformationDesignDraft(StrictModel):
         if self.assignment_law_gap is not None:
             if self.assignment_law_gap.basis != "EXPLICIT_TEXT" or self.assignment_law.basis != "UNRESOLVED":
                 raise ValueError("Assignment-law gap requires explicit evidence and an unresolved law")
-        if (self.assignment_family != AssignmentFamily.UNRESOLVED
+        # OBSERVATIONAL labels a proposed study regime; it does not assert a
+        # known assignment distribution. DAG identification can use an observed
+        # joint law without knowing that distribution. Keep the law unresolved
+        # and require downstream evidence/review for every actual condition.
+        if (self.assignment_family not in (AssignmentFamily.UNRESOLVED, AssignmentFamily.OBSERVATIONAL)
                 and self.assignment_law.basis == "UNRESOLVED" and self.assignment_law_gap is None):
             raise ValueError("Concrete assignment_family requires evidenced assignment_law")
         operator_levels = {

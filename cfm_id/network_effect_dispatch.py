@@ -96,7 +96,9 @@ def inspect_methods(entry, raw, *, note_review=None):
         for label,condition in [('处理前固定网络',c.design_facts.network_fixed_before_treatment),
                 ('评价名单在抽签前固定',t.population_fixed_before_assignment),
                 ('两端结果定义、期间和背景相同',t.shared_outcome_and_context)]:
-            if condition.value is None: missing.append('请核对原文是否明确：'+label+'。')
+            if condition.value is None:
+                missing.append(reading.population_contract.QUESTION if condition is t.population_fixed_before_assignment
+                               else '请核对原文是否明确：'+label+'。')
             elif condition.value is False: unsupported.append('DECLARED_EFFECT_SCOPE_EXCLUDES:'+label)
         for name,condition in c.scientific_statements:
             if condition.status=='CONFLICTING':
@@ -115,9 +117,16 @@ def inspect_methods(entry, raw, *, note_review=None):
         if c.exposure.kind in ('OTHER','NONE'): unsupported.append('EFFECT_EXPOSURE_NOT_CONNECTED')
         if t.kind=='OTHER' or t.operation=='OTHER' or t.aggregation=='OTHER' or t.remaining_assignment=='OTHER':
             unsupported.append('TARGET_OUTSIDE_DESIGN_STANDARDIZED_LOCAL_CONTRAST')
-        if (not c.study.nodes or c.study.graph_kind=='UNKNOWN' or c.study.edge_list_complete is not True or
-            c.study.outcome_kind=='UNKNOWN' or not all(x and x.strip() for x in (c.study.treatment,c.study.outcome,c.study.context))):
-            missing.append('请明确完整对象名单、处理前网络、处理与结果含义及期间背景。')
+        if not c.study.nodes: missing.append('请提供完整研究对象名单，包括没有关系或没有结果记录的对象。')
+        if c.study.graph_kind=='UNKNOWN': missing.append('对象之间的关系是否有方向？例如，甲联系乙是否也表示乙联系甲？')
+        if c.study.edge_list_complete is not True:
+            missing.append('关系表已声明只列出一部分。请补充本次研究范围内遗漏的关系；当前方法需要完整关系。'
+                           if c.study.edge_list_complete is False else
+                           '上传的关系表是否列出了本次研究范围内的全部关系？未列出的对象对是否确定没有这种联系？')
+        if c.study.outcome_kind=='UNKNOWN': missing.append('关注的结果是二元状态、次数，还是连续数值？请说明结果的取值含义。')
+        for name,label in [('treatment','启用与未启用各指什么，以及数据中的取值编码'),
+                           ('outcome','要比较的结果指标及其含义'),('context','这项结果对应的时期，以及是否限定共同背景')]:
+            if not getattr(c.study,name) or not getattr(c.study,name).strip(): missing.append('请说明'+label+'。')
         if c.assignment.kind=='INDEPENDENT_BERNOULLI' and (c.assignment.probabilities is None or set(c.assignment.probabilities)!=set(c.study.nodes)):
             missing.append('请说明原试点是否逐对象独立抽签，以及每个对象的已知概率。')
         if c.exposure.kind=='UNKNOWN' or not c.exposure.source_ids:

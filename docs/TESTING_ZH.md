@@ -2,11 +2,20 @@
 
 测试数量不是业务覆盖数或LLM准确率。每项测试应说明保护什么合同、由哪个文件维护，以及何时需要运行。
 
-最新完整收尾结果统一见[当前交接验收](DELIVERY_READINESS_ZH.md)；下文测试整理与真实LLM小节保留当时的历史计数，不作为最终源码的通过数。
+当前发布检查见[发布收尾记录](RELEASE_ACCEPTANCE_ZH.md)，原安装基线保留在[交接验收](DELIVERY_READINESS_ZH.md)。下文测试整理与真实 LLM 小节保留当时计数，不作为当前源码通过数。
 
 ## 三个运行入口
 
 在项目根目录、已安装测试依赖的Python环境中运行；每次使用新的输出目录：
+
+Windows 下先与 CI 对齐 UTF-8 和线程设置，避免中文 CLI 输出被系统 GBK 编码、以及多个小矩阵测试过度并行：
+
+```powershell
+$env:PYTHONUTF8 = '1'
+$env:OMP_NUM_THREADS = '1'
+$env:MKL_NUM_THREADS = '1'
+$env:OPENBLAS_NUM_THREADS = '1'
+```
 
 ```powershell
 python -m evaluation.framework_acceptance --suite quick --output outputs/checks/quick_001
@@ -69,7 +78,7 @@ python -m evaluation.framework_acceptance --suite full --output outputs/checks/f
 
 先冻结业务、正负条件、配置和审读标准。参考答案不发送给模型，不按回答补条件。实际A0通过独立审读后才能进入真实端到端事实读取；参考A0下的事实读取只算组件诊断。首答、重读、格式、语义、引用及最终执行分别报告。
 
-整理阶段记录位于工作区本地实验记录（不分发）。整理前为2470项；第一阶段实际完成quick 87、chain 565、full 2468项（另133子测试）。配置／数学职责拆分后的收集范围为quick 87、chain 554、full 2380；**收集数不当通过数**。整理阶段状态为`CONSOLIDATION_STATUS.json`，此前全量结果仅对应第一阶段源码。
+整理阶段记录留在维护者本机，不随源码分发。整理前为2470项；第一阶段实际完成quick 87、chain 565、full 2468项（另133子测试）。配置／数学职责拆分后的收集范围为quick 87、chain 554、full 2380；**收集数不当通过数**。整理阶段状态为`CONSOLIDATION_STATUS.json`，此前全量结果仅对应第一阶段源码。
 
 随后已进行真实LLM验收，另见同目录`LIVE_SUMMARY.json`和[最新验收记录](FRAMEWORK_ACCEPTANCE_ZH.md)。本次只针对实际暴露的非法空状态定位缺口补充3个测试节点；相关88项定向检查通过，未再次运行全量。不要将不同源码版本或诊断、重读与首答的分母混算。
 

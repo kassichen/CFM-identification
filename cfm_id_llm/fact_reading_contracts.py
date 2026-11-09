@@ -120,6 +120,9 @@ class FactReadingContract:
         if self.reader_id == 'NETWORK_RANDOMIZED_EFFECT_FACTS':
             from .assumption_choices import field_constraints
             extra = field_constraints(paths)
+        if self.reader_id in ('NETWORK_RANDOMIZED_EFFECT_FACTS','NETWORK_RANDOMIZED_ARM_FACTS'):
+            from .network_population_contract import field_constraints
+            extra += field_constraints(paths)
         if self.contextual_constraints is not None:
             rows = self.contextual_constraints(entry, paths)
             if entry.get('reviewed_intent') is None:

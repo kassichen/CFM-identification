@@ -24,6 +24,9 @@ ROLES = {
 def role_for(path):
     parts = path.split('/')[1:]
     root = parts[0] if parts else ''
+    if root == 'information' and 'data_description' in parts:
+        from .network_policy_reading import DATA_DESCRIPTION_RULE
+        return DATA_DESCRIPTION_RULE
     if 'assignment_masses' in parts:
         return '本行的完整使用向量和概率；引用同时覆盖行值与用来解释坐标的对象顺序、编码。表头不是概率值的来源。'
     return ROLES.get(root, '按当前读取Schema核对本字段的原文含义、状态、范围及引用；不补造事实或科学许可。')

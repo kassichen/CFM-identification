@@ -7,9 +7,12 @@ from typing import Literal
 from pydantic import Field, model_validator
 from .network_policy_reading import Cited
 
+CONDITIONS = ('MEAN_EXPOSURE_SUFFICIENCY','OUTCOME_EXPOSURE_SUFFICIENCY')
 RULE = (
-    'assumption_choices只记录原文明确谈及的可选假设及采用态度；目前支持MEAN_EXPOSURE_SUFFICIENCY'
-    '（固定本人处理和同伴分组后，完整安排的其他差别不再改变总体均值）。'
+    'assumption_choices只记录原文明确谈及的可选假设及采用态度。MEAN_EXPOSURE_SUFFICIENCY'
+    '表示固定本人处理和同伴分组后，完整安排的其他差别不再改变总体均值；'
+    'OUTCOME_EXPOSURE_SUFFICIENCY表示同一对象在这些完整安排下的潜在结果逐个相同，'
+    '不只是平均值相同。按原文选择，不互相替代，也不自动增补另一项采用态度。'
     'NOT_ADOPTED表示本次不依赖该假设，不表示假设被证明为假；UNDECIDED表示采用与否尚未决定；'
     'ASSERTED_FALSE表示原文断言该性质不成立。ADOPTED、PROPOSED、CONFLICTING分别表示采用、拟采用和声明冲突。'
     'scope=CURRENT_STUDY只用于这项选择适用于当前研究，范围不同用OTHER，范围不清用UNKNOWN。'
@@ -21,7 +24,7 @@ RULE = (
 
 
 class AssumptionChoice(Cited):
-    condition: Literal['MEAN_EXPOSURE_SUFFICIENCY']
+    condition: Literal['MEAN_EXPOSURE_SUFFICIENCY','OUTCOME_EXPOSURE_SUFFICIENCY']
     status: Literal['ADOPTED', 'PROPOSED', 'NOT_ADOPTED', 'UNDECIDED', 'ASSERTED_FALSE', 'CONFLICTING']
     scope: Literal['CURRENT_STUDY', 'OTHER', 'UNKNOWN'] = Field(description=RULE)
 

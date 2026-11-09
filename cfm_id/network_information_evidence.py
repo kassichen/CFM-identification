@@ -26,13 +26,16 @@ class InformationEvidenceReview(StrictRecord):
 
 def _worksheet(entry,raw,c):
     contrast=entry.get('reader_id')=='NETWORK_POLICY_CONTRAST_FACTS'
-    if not contrast and (entry.get('reader_id')!='NETWORK_FIXED_POLICY_FACTS' or len(c.information)!=1):
+    from .network_bounded_dispatch import model_information_indices
+    indices=model_information_indices(c)
+    information=[c.information[i] for i in indices]
+    if not contrast and (entry.get('reader_id')!='NETWORK_FIXED_POLICY_FACTS' or len(information)!=1):
         raise ValueError('SINGLE_NETWORK_INFORMATION_ENTRY_REQUIRED')
-    if not c.information or any(info.operator!='NODE_SIGNATURE_MEANS' or
-            info.availability!='EXACT_POPULATION_VALUE' for info in c.information):
+    if not information or any(info.operator!='NODE_SIGNATURE_MEANS' or
+            info.availability!='EXACT_POPULATION_VALUE' for info in information):
         raise ValueError('EXACT_SIGNATURE_TABLE_REQUIRED')
     catalog=build_catalog(documents(entry['bundle']))
-    ids=list(dict.fromkeys(sid for info in c.information for sid in info.source_ids))
+    ids=list(dict.fromkeys(sid for info in information for sid in info.source_ids))
     if len({catalog[s]['doc_id'] for s in ids})<2:
         raise ValueError('MULTIDOCUMENT_EVIDENCE_REQUIRED')
     version=CONTRAST_VERSION if contrast else VERSION
@@ -44,10 +47,12 @@ def _worksheet(entry,raw,c):
         instruction='独立确认全部精确格子来自同一个原始信息表；其他引用仅用于解释对象、编码、暴露或期间，不包含另一份总体信息、额外方程或约束。无法确认就保持PENDING或拒绝，不能删除引用来通过。此审核不批准科学条件。',
         scientific_approval=False,is_approval=False)
     if contrast:
-        result.update(information_entries=[info.model_dump(mode='json') for info in c.information],
-            entry_source_ids={str(i):list(info.source_ids) for i,info in enumerate(c.information)},
+        result.update(information_entries=[info.model_dump(mode='json') for info in information],
+            entry_source_ids={str(i):list(c.information[i].source_ids) for i in indices},
             scope='One original exact table, possibly partitioned into disjoint records; both ordered targets and the unchanged full candidate are bound. Every record must cite the table. No new information, equality or coupling may be classified as a definition.')
-    else:result['information']=c.information[0].model_dump(mode='json')
+    else:result['information']=information[0].model_dump(mode='json')
+    if len(indices)!=len(c.information):
+        result['original_entry_indices']=indices
     return result
 
 def prepare(entry,raw):
@@ -78,5 +83,5 @@ def check(entry,raw,c,record):
         table_documents=sorted(table_docs),supporting_documents=sorted({w['source_catalog'][s]['doc_id'] for s in r.supporting_source_ids}),
         candidate_modified=False,information_entries_merged=False,scientific_approval=False)
     if w['version']==CONTRAST_VERSION:
-        receipt['information_entry_count']=len(c.information)
+        receipt['information_entry_count']=len(w['information_entries'])
     return receipt

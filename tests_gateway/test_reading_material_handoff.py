@@ -175,8 +175,17 @@ def test_joint_sharp_partial_needs_complete_materials_without_note_exception():
     candidate['information'].append(sample);o['source_review']=reviewed(e,candidate,omitted=False)
     complete=dispatch.execute(s,'q1',**o,research_protocol_selected=True)
     assert complete['reading_assessment']['material_completeness']=='COMPLETE'
-    # Existing finite-model adapter does not silently discard an extra sample row.
-    assert complete['state']=='NEEDS_INPUT' and not complete['backend_called']
+    # Complete material remains in the review. Finite records are not A4 and
+    # need not block an independently supplied complete population model.
+    assert complete['state']=='REVIEW_REQUIRED' and not complete['backend_called']
+    p=dispatch.inspect_methods(s,'q1',**o)
+    snapshot=deepcopy(candidate)
+    with_sample=dispatch.execute(s,'q1',**o,**approval_records(p))
+    assert with_sample['state']=='PARTIAL' and with_sample['independent_replay']
+    assert with_sample['mathematical_claim']['sharp'] and candidate==snapshot
+    rejected=deepcopy(o)
+    rejected['source_review']['decisions']['/information/1']['source_coverage']='REJECTED'
+    assert not dispatch.execute(s,'q1',**rejected,**approval_records(p))['backend_called']
     case,data=example.material('partial');raw=example.a0_reference(case)
     raw['common']['available_information']=dict(state='STATED',value=case.source_map()['information'],
         refs=[r['ref'] for r in build_catalog(case) if r['source_id']=='information'])
@@ -187,6 +196,7 @@ def test_joint_sharp_partial_needs_complete_materials_without_note_exception():
     o=dict(query_review=q,candidate=candidate,request_sha256=e['request_sha256'],source_review=reviewed(e,candidate,omitted=False))
     p=dispatch.inspect_methods(s,'q1',**o);r=dispatch.execute(s,'q1',**o,**approval_records(p))
     assert r['state']=='PARTIAL' and r['independent_replay'] and r['mathematical_claim']['sharp']
+    assert with_sample['mathematical_claim']['interval']==r['mathematical_claim']['interval']
     assert r['reading_assessment']['material_completeness']=='COMPLETE'
 
 

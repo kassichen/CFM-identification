@@ -123,3 +123,24 @@ def test_reviewed_reading_errors_stop_without_repairing_the_candidate(monkeypatc
     assert result['reason_code']=='FACT_SOURCE_REVIEW_REJECTED'
     assert not result['backend_called'] and result['mathematical_claim'] is None
     assert raw==before and review['decisions'][path][dimension]=='REJECTED'
+
+
+@pytest.mark.parametrize('definition', ['another outcome', 'paraphrased outcome', None])
+def test_order_outcome_binding_checked_before_science_without_normalizing(definition,monkeypatch):
+    from cfm_id_llm.mean_order_field_contract import OUTCOME_BINDING_RULE
+    s,e,o=setup();raw=o['candidate']
+    raw['bounded_model']['outcome_definition']=definition
+    before=deepcopy(raw)
+    assert OUTCOME_BINDING_RULE in body(e)['output_schema']['x-cfm-field-contract']
+    rules=contract_for_entry(e).public_constraints(e,['/bounded_model/outcome_definition'])
+    assert OUTCOME_BINDING_RULE in rules
+    if definition is not None:
+        with pytest.raises(ValidationError,match='MEAN_ORDER_OUTCOME_DEFINITION_MISMATCH'):
+            contract_for_entry(e).model.model_validate(raw)
+        assert diagnose(e,raw)==[OUTCOME_BINDING_RULE]
+    else:
+        contract_for_entry(e).model.model_validate(raw)  # Unknown remains unknown.
+    monkeypatch.setattr(mean_order,'submit',lambda *a,**k:pytest.fail('No approved matching outcome'))
+    result=dispatch.execute(s,'q1',**o,research_protocol_selected=True)
+    assert not result['backend_called'] and result['state'] not in ('POINT','PARTIAL')
+    assert raw==before

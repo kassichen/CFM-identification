@@ -15,6 +15,32 @@ NULL_RULE = dict(code='NOT_ASSUMED_HAS_NO_LICENSED_LEVEL_OR_SCOPE',
     trigger_field='relation', trigger='NOT_ASSUMED', required_null_fields=('level','scope'),
     description='明确不采用该顺序时，没有获准的层级和范围，level与scope都为null。尚未决定采用应保留UNKNOWN，不能为了通过格式改为不采用或已采用。')
 
+OUTCOME_BINDING_RULE = dict(error_code='MEAN_ORDER_OUTCOME_DEFINITION_MISMATCH',
+    field_path='/bounded_model/outcome_definition', compared_with='/study/outcome',
+    description='当mean_order_model与bounded_model都非null时，均值顺序适配器要求界限和研究使用同一结果定义；'
+    '两个已知字段bounded_model.outcome_definition与study.outcome须采用完全相同的文字。'
+    '先核对原文的指标及编码：同一指标统一表述，不要独立改写；不同指标不得为通过检查强行写成相同。'
+    '原文未定保留null，真实差异或歧义保留并等待澄清；文字一致也不代替来源和科学审核。')
+
+
+@model_validator(mode='after')
+def check_outcome_binding(self):
+    bounds=self.bounded_model
+    if (self.mean_order_model is not None and bounds is not None
+            and self.study.outcome is not None and bounds.outcome_definition is not None
+            and bounds.outcome_definition != self.study.outcome):
+        # Same invariant already enforced by compile_reviewed, now visible
+        # before scientific approval. No normalization or semantic inference.
+        raise PydanticCustomError(OUTCOME_BINDING_RULE['error_code'], OUTCOME_BINDING_RULE['description'])
+    return self
+
+
+def outcome_contract(request):
+    result=deepcopy(request);body=json.loads(result['user'])
+    body['output_schema'].setdefault('x-cfm-field-contract',[]).append(deepcopy(OUTCOME_BINDING_RULE))
+    result['user']=json.dumps(body,ensure_ascii=False)
+    return result
+
 
 def combination_schema():
     return {'if': {'properties': {NULL_RULE['trigger_field']: {'const': NULL_RULE['trigger']}},
@@ -54,6 +80,8 @@ COMPLETE_MODEL = ('只读取是否明确声明“除基础条件、均值充分�
 
 
 def validation_diagnostic(error):
+    if error['type'] == OUTCOME_BINDING_RULE['error_code']:
+        return deepcopy(OUTCOME_BINDING_RULE)
     if error['type'] != NULL_RULE['code']:
         return {}
     return dict(error_code=NULL_RULE['code'], description=NULL_RULE['description'],
@@ -65,7 +93,7 @@ def field_constraints(paths, *, request):
     schema=json.JSONDecoder().raw_decode(request['user'])[0]['output_schema']
     node=schema.get('properties',{}).get('mean_order_model')
     if node is None:return []
-    rows=[];defs=schema.get('$defs',{})
+    rows=deepcopy(schema.get('x-cfm-field-contract',[]));defs=schema.get('$defs',{})
     def walk(value,path):
         if '$ref' in value:return walk(defs[value['$ref'].split('/')[-1]],path)
         if value.get('description'):rows.append(dict(field_path=path,description=value['description']))

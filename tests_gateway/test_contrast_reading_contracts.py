@@ -65,7 +65,10 @@ def test_registered_pair_uses_existing_config_schema_parser_and_direction_help(p
         extra=actual_constraints[len(base_constraints):]
         schema=json.JSONDecoder().raw_decode(e['request']['user'])[0]['output_schema']
         claim_schema=schema['$defs']['OrderClaim']
+        from cfm_id_llm.mean_order_field_contract import OUTCOME_BINDING_RULE
+        assert OUTCOME_BINDING_RULE in extra and OUTCOME_BINDING_RULE in schema['x-cfm-field-contract']
         assert extra and all(r['field_path'].startswith('/mean_order_model') or
+            r==OUTCOME_BINDING_RULE or
             (profile==ownership.PROFILE and r['field_path'] in ownership.ROLES) for r in extra)
         if profile==ownership.PROFILE:
             assert all(any(r['field_path']==path and r.get('description')==description for r in extra)

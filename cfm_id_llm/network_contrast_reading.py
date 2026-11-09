@@ -128,9 +128,11 @@ def _base_parse(bundle, raw, *, binding, profile=None):
 @lru_cache(maxsize=None)
 def reading_model(profile=None):
     from .network_mean_order_reading import NetworkMeanOrderModel, field, PROFILES
+    from .mean_order_field_contract import check_outcome_binding
     if profile not in PROFILES:
         return _base_reading_model(profile)
     return create_model('NetworkPolicyContrastWithOrders', __base__=_base_reading_model(profile),
+                        __validators__={'check_outcome_binding':check_outcome_binding},
                         mean_order_model=(NetworkMeanOrderModel | None, field()))
 
 
@@ -141,9 +143,10 @@ def make_request(bundle, *, binding, assignment_semantics=None, profile=None):
     if profile not in PROFILES:return request
     request = extend_request(request)
     from . import shared_fact_definitions as shared
-    if profile == shared.PROFILE:return shared.apply(request)
+    from .mean_order_field_contract import outcome_contract
+    if profile == shared.PROFILE:return outcome_contract(shared.apply(request))
     from . import mean_order_ownership as ownership
-    return ownership.apply(request) if profile == ownership.PROFILE else request
+    return outcome_contract(ownership.apply(request) if profile == ownership.PROFILE else request)
 
 
 def field_constraints(paths, *, request, profile=None):

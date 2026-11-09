@@ -57,7 +57,9 @@ def inspect_methods(entry,raw,*,note_review=None):
         out.update(decoded,reading_candidate=deepcopy(raw),bundle=deepcopy(entry['bundle']))
         missing=[];blocked=[]
         def require(d,name):
-            if d.value is None:missing.append('请明确本次分析是否采用这一条件：'+SCIENCE_NAMES.get(name,name)+'。')
+            if d.value is None:
+                missing.append(reading.population_contract.QUESTION if name=='评价对象在抽签前固定'
+                               else '请明确本次分析是否采用这一条件：'+SCIENCE_NAMES.get(name,name)+'。')
             elif d.value is False:blocked.append('DECLARED_MODEL_EXCLUDES:'+name)
             elif not d.source_ids:missing.append('请补充声明的原文来源：'+name)
         if not c.study.nodes or c.study.graph_kind=='UNKNOWN' or c.study.edge_list_complete is not True:

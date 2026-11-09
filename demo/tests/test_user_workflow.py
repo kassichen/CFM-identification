@@ -109,7 +109,7 @@ def test_answer_creates_new_material_and_discards_old_approvals(tmp_path,monkeyp
     assert not run.reviews and run.intake is None and run.submission is None and run.result is None
 
 
-def test_real_additional_restriction_survives_one_bounded_reread(tmp_path,monkeypatch):
+def test_real_additional_restriction_does_not_trigger_a_blind_reread(tmp_path,monkeypatch):
     engine,run=reading_fixture(tmp_path,monkeypatch)
     original=engine.call;facts=[]
     def reply(run,request,stage):
@@ -120,7 +120,7 @@ def test_real_additional_restriction_survives_one_bounded_reread(tmp_path,monkey
         facts.append(raw);return raw
     monkeypatch.setattr(engine,'call',reply);run.automatic_review=True
     engine._continue_automatically(run)
-    assert len(facts)==2 and run.automatic_rechecks==1
+    assert len(facts)==1 and run.automatic_rechecks==0
     assert run.submission['candidate']['additional_restrictions']
     assert not run.reviews and run.result['state']!='POINT'
 
@@ -140,3 +140,62 @@ def test_terminal_query_gate_does_not_loop_audit_or_call_facts(tmp_path,monkeypa
     monkeypatch.setattr(engine,'call',forbidden)
     engine._continue_automatically(run)
     assert run.result['state']=='ADAPTER_NOT_CONNECTED' and run.submission is None
+
+
+@pytest.mark.parametrize('fixed', [True, False])
+def test_source_audit_locates_one_reread_before_scientific_review(tmp_path,monkeypatch,fixed):
+    engine,run,_=automatic_fixture(tmp_path,monkeypatch)
+    engine._review(run,fixture_review(run))
+    run.submission['candidate']['unresolved']=[dict(text='模型误将明确的一致性条件记录为未决定。',
+        source_ids=run.submission['candidate']['scientific_statements']['consistency']['source_ids'])]
+    engine._plan(run)
+    original=deepcopy(run.submission);fact_reply=engine.call;calls=[]
+    path='source:/unresolved/0';reason='原文已经声明该条件，候选却又把同一条件记为未决定。'
+    def reply(current,request,stage):
+        calls.append(stage)
+        if stage.startswith('reading_audit_') or stage.startswith('focused_audit'):
+            body=json.loads(request['user_prompt'])
+            if path not in body['fields']:
+                return {'scientific_approval':False,'findings':[]}
+            refs=current.submission['candidate']['unresolved'][0]['source_ids']
+            if stage.startswith('focused_audit'):
+                return dict(scientific_approval=False,assessments=[dict(field=path,source_ids=refs,
+                    comparison=reason,matches_source=False,question=None)])
+            return dict(scientific_approval=False,findings=[dict(kind='READING_ERROR',field=path,
+                reason=reason,question=None,source_ids=refs)])
+        # The production recheck includes precise source/field locations and
+        # public definitions, never private audit reasons or replacement values.
+        assert '/unresolved/0' in request['request']['user']
+        assert reason not in request['request']['user']
+        raw=fact_reply(current,request,stage)
+        if not fixed:raw['unresolved']=deepcopy(original['candidate']['unresolved'])
+        return raw
+    monkeypatch.setattr(engine,'call',reply)
+    engine._continue_automatically(run)
+    assert calls[:3]==['reading_audit_1','focused_audit','facts']
+    assert calls.count('facts')==1 and run.automatic_rechecks==1
+    assert run.artifacts['facts_before_recheck_1']==original
+    assert run.result is None and not run.reviews
+    if fixed:
+        assert run.review_kind=='science' and run.error is None
+        engine._review(run,fixture_review(run))
+        assert run.result['state']=='POINT' and run.result['independent_replay']
+    else:
+        assert run.error['code']=='READING_REVIEW_DISAGREEMENT' and run.user_question is None
+
+
+@pytest.mark.parametrize('issue', [
+    dict(kind='NEEDS_CLARIFICATION',field='source:/unresolved/0',source_ids=['unused']),
+    dict(kind='READING_ERROR',field='source:/missing',source_ids=['unused']),
+    dict(kind='READING_ERROR',field='source:/unresolved/0',source_ids=['fabricated']),
+    dict(kind='READING_ERROR',field='query:/unresolved/0',source_ids=['unused']),
+])
+def test_recovery_cannot_guess_audit_field_or_source_or_rewrite_unknown(tmp_path,monkeypatch,issue):
+    engine,run,_=automatic_fixture(tmp_path,monkeypatch)
+    engine._review(run,fixture_review(run))
+    run.submission['candidate']['unresolved']=[dict(text='此项条件尚未决定。',
+        source_ids=run.submission['candidate']['scientific_statements']['consistency']['source_ids'])]
+    engine._plan(run);original=deepcopy(run.submission)
+    finding={**issue,'reason':'必须保留原文中尚未决定的条件，不能默认批准。'}
+    assert not recovery.prepare(run,allow_busy=True,audit_findings=[finding])['available']
+    assert run.submission==original and not run.reviews

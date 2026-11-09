@@ -77,6 +77,24 @@ def test_plain_single_document_path_and_default_remain_unchanged():
     assert dispatch.inspect_methods(s,'q1',**o)==p
     with pytest.raises(ValueError,match='MULTIDOCUMENT_EVIDENCE'):evidence.prepare(e,o['candidate'])
 
+
+@pytest.mark.parametrize('contrast',(False,True))
+def test_supporting_evidence_reviews_exact_entries_without_promoting_sample(contrast):
+    s,e,o,rec=contrast_fixture() if contrast else fixture()
+    old_binding=rec['binding_sha256']
+    sample=dict(operator='FINITE_SAMPLE',availability='FINITE_SAMPLE',
+        outcome_nodes=o['candidate']['study']['nodes'][:1],signature_cells=[],assignment_cells=[],
+        source_ids=o['candidate']['bounded_model']['source_ids'])
+    o['candidate']['information'].insert(0,sample)
+    w=evidence.prepare(e,o['candidate'])
+    assert 0 not in w['original_entry_indices'] and w['binding_sha256']!=old_binding
+    assert not dispatch.execute(s,'q1',**o,information_evidence_review=rec,research_protocol_selected=True)['backend_called']
+    rec['binding_sha256']=w['binding_sha256']
+    p=dispatch.inspect_methods(s,'q1',**o,information_evidence_review=rec)
+    assert p['state']=='REVIEW_REQUIRED',p
+    r=dispatch.execute(s,'q1',**o,information_evidence_review=rec,**approval_records(p))
+    assert r['independent_replay'] and r['state']=='PARTIAL'
+
 def test_offline_cli_exposes_separate_evidence_worksheet_and_review(tmp_path):
     from cfm_id import business_intake as intake
     from cfm_id.business_dispatch_cli import main

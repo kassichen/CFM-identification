@@ -11,11 +11,13 @@ from typing import Literal
 from pydantic import Field
 from .network_policy_reading import Study, Information, BoundedModel, Exposure, NodeBound
 from .network_statement_reading import SelectionReading, parse_selection
+from .network_policy_reading import Note, DATA_DESCRIPTION_RULE
+from .network_remainder_contract import GAPS
 
 # Historical records remain readable; the current model-facing schema requires
 # explicit graph evidence and uses descriptive population-law labels.
 class SharedStudy(Study):
-    context: str | None = Field(description='结果的评价时期，以及另行明确的固定背景。保留reviewed_intent已读到的时期，例如下周/下月；不是门店行业名称。没有额外背景不表示时期为空。')
+    context: str | None = Field(description='结果的评价时期，以及用户另行明确限定评价的背景。保留reviewed_intent已读到的时期；时期相同、网络固定或已收集特征不自动产生条件目标。真实给定G或X=x的目标仍须保留；没有额外背景不表示时期为空。')
     network_source_ids: list[str] | None = Field(default=None,
         description='只引用支持 edges、graph_kind 和 edge_list_complete 的网络原文；名单/编码/结果/时期引用仍放 source_ids。没有网络说明时为空列表。')
 
@@ -34,11 +36,24 @@ class SharedExposure(Exposure):
     core_collaborators: dict[str,list[str]] | None = Field(default=None,
         description='仅PRETREATMENT_CORE_COLLABORATOR_MAJORITY使用；其他暴露为null，不复制普通邻接表。')
 
+# Residual *restrictions*, not all residual prose. The same description is
+# delivered to the reader and independent audit via the actual request Schema.
+RESTRICTION_RULE = (
+    '仅记录专门字段尚未表达的实际额外条件：限制潜在结果或总体均值的界、等式、单调性、其他因果条件，'
+    '额外总体信息，以及限定目标或识别方法的要求。按每项主张分类，不按整段分类。'
+    '允许对象相互影响、不再另加均值限制等说明，本身没有增加上述约束，不放入这个列表；完整原文仍保留在来源材料中。'
+    '某个假设不采用或未决定时，忠实保留在对应科学态度字段；不采用不等于断言该假设为假。'
+    '有界或顺序模型所需的完整性声明仍须在其专门字段明确记录并审核，不能由本列表为空推定。'
+    '未被专门字段表达的真实条件、冲突和科学决定不能丢弃。数据取得方式归information[].data_description，'
+    '材料缺项归对应未知字段或unresolved；不能从有来源就认定归类正确。')
+
 class Reading(SelectionReading):
     study: SharedStudy
     information: list[SharedInformation]
     bounded_model: SharedBounds | None = None
     exposure: SharedExposure
+    additional_restrictions: list[Note] = Field(description=RESTRICTION_RULE)
+    unresolved: list[Note] = Field(description=GAPS)
 
 def parse(bundle,raw,*,binding):
     value=Reading.model_validate(deepcopy(raw)).model_dump()
@@ -85,12 +100,15 @@ def apply(request):
         elif name=='SharedInformation':
             props['operator']['enum']=[x for x in props['operator']['enum'] if x not in LAW_NAMES.values()]
             props['operator']['description']='EACH_OUTCOME_WITH_FULL_ASSIGNMENT: 每个对象的结果分别与完整处理向量的总体分布 P(Y_i,T)。ALL_OUTCOMES_TOGETHER_WITH_FULL_ASSIGNMENT: 全部对象结果向量与完整处理向量的联合总体分布 P(Y_1,...,Y_N,T)。前者不包含不同对象结果之间的联合关系。'
+    for field in ('additional_restrictions','unresolved'):
+        schema['properties'][field]=owned['properties'][field]
     schema['properties']['study']={'$ref':'#/$defs/SharedStudy'}
     schema['properties']['information']={'type':'array','items':{'$ref':'#/$defs/SharedInformation'}}
     schema['properties']['bounded_model']=owned['properties']['bounded_model']
     schema['properties']['exposure']={'$ref':'#/$defs/SharedExposure'}
     schema['properties']['first_stage_exclusion']['description']='仅记录原文针对两阶段设计第一阶段的排除限制；随机化、潜在结果独立或一致性不等于该条件。未提出时为null。'
-    schema['$defs']['Assignment']['properties']['probabilities']['description']='各单位在历史试点中被安排使用工具的概率，约分分数字符串。原文若用等可能抽签完整说明概率，可按其事件读取，例如三个等可能号中一个启用对应1/3；不能把明确规则漏成null。规则未说明才未知。'
+    from .network_design_reading import PROBABILITIES_DESCRIPTION
+    schema['$defs']['Assignment']['properties']['probabilities']['description']=PROBABILITIES_DESCRIPTION
     body['shared_definition_contract']=dict(version=PROFILE,evidence_rule=EVIDENCE_RULE,
         owners={'study':['nodes','treatment','outcome','context'],'exposure':['kind','core_collaborators']},
         claim_sources='RECORD_LOCAL',definition_sources='DECLARED_OWNER_RECORD',
@@ -113,7 +131,15 @@ def make_request(bundle,*,binding,assignment_semantics=None):
 def field_constraints(paths,*,request):
     body=json.JSONDecoder().raw_decode(request['user'])[0]
     if body.get('shared_definition_contract',{}).get('version')!=PROFILE:raise ValueError('SHARED_DEFINITION_REQUEST_REQUIRED')
-    return [dict(field_path=p,description=EVIDENCE_RULE) for p in paths]
+    rows=[dict(field_path=p,description=EVIDENCE_RULE) for p in paths]
+    for path in paths:
+        if path in ('','/additional_restrictions') or path.startswith('/information'):
+            rows.append(dict(field_path=path,description=DATA_DESCRIPTION_RULE))
+        if path in ('','/additional_restrictions'):
+            rows.append(dict(field_path=path,description=RESTRICTION_RULE))
+        if path in ('','/unresolved'):
+            rows.append(dict(field_path=path,description=GAPS))
+    return rows
 
 def add_review_definitions(rows,candidate,entry,body):
     if entry.get('network_fact_contract')!=PROFILE:return None

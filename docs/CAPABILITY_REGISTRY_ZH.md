@@ -1,6 +1,6 @@
 # 已有能力登记与实际入口
 
-`NETWORK_OBSERVATIONAL_POLICY_FACTS` 绑定已有 `R3_FULL_ASSIGNMENT` 和 `R3_MEAN_SIGNATURE`。后者使用显式签名读取配置及单独的充分性审核；默认旧读取合同保持不变。相同固定政策目标按已审核的 `assignment_family=OBSERVATIONAL` 选择观察性事实家族，不是新目标类别，也不自动批准交换性。详见 [R3 合同与边界](R3_POLICY_ENTRY_CONTRACT_ZH.md)。
+`NETWORK_OBSERVATIONAL_POLICY_FACTS` 绑定已有 `R3_FULL_ASSIGNMENT` 和 `R3_MEAN_SIGNATURE`。后者使用显式签名读取配置及单独的充分性审核；旧直接调用默认保持兼容；网页按家族显式选用签名合同，不能由“默认”推断其实际配置。相同固定政策目标按已审核的 `assignment_family=OBSERVATIONAL` 选择观察性事实家族，不是新目标类别，也不自动批准交换性。详见 [R3 合同与边界](R3_POLICY_ENTRY_CONTRACT_ZH.md)。
 
 此前：`NETWORK_POLICY_CONTRAST_FACTS` 新增 `R2_ENDPOINT_DIFFERENCE` 方法绑定，仍使用原比较事实合同及两端原生 R2 证书。数学能力没有新增一种 R；该方法只是已有能力的业务组合。详情见 [接入验收](R2_CONTRAST_INTEGRATION_ZH.md)。数学材料索引在 `literature_support`，只作导航，不能成为第二个运行能力表。
 
@@ -38,6 +38,8 @@ R1a/R1b/R2/R3 是识别机制，D1–D6 是分配设计，E1–E5 是暴露定�
 R1a 的 D1–D6/E1–E5 直接与同伴效应组合已接入，详见[局部效应入口](NETWORK_EFFECT_DISPATCH_ZH.md)与[设计/暴露验收](NETWORK_DESIGN_EXPOSURE_ENTRY_ZH.md)。直接效应支持两个比较方向：正向沿用原生具名效应合同，反向实际调用既有线性目标生产与重放函数。单个局部均值、有限政策混合及 R3 的标准化效应／暴露调整现已由 `network_extended_dispatch` 接入上表三个读取家族；这不是任意网络、政策或调整变量的通用识别器。R3固定W政策均值已连接Full及显式签名配置；Full零支持不自动授予签名充分性，也不自动转PARTIAL。D2/E1均值顺序两政策差值已接本共同入口，并保留原专门入口；[接入范围与验收](NETWORK_MEAN_ORDER_ENTRY_ZH.md)。库外候选研究仍保留专门入口。
 
 登记描述协议现为 `identification-capability-registry-2`，将单值 `target_kind` 改为 `target_kinds` 列表，避免为共用事实协议复制两套直接／同伴效应登记。内部九个会话 ID、原生研究目录和数学证书协议保持不变。
+
+当前修复与发布检查见[收尾记录](RELEASE_ACCEPTANCE_ZH.md)。以下原登记验收保留其当时范围，不代表本轮模型准确率。
 
 ## 一致性检查与兼容性
 

@@ -15,6 +15,17 @@ MODEL_DECISIONS=('exact_a4_values_and_complete_information_scope',
     'mean_sufficiency_all_assignments_and_all_model_nodes')
 
 
+def model_information_indices(c):
+    """Retain every population/unknown claim; only explicit sample records stay out of A4.
+
+    The full candidate, citations and data descriptions remain in reading review
+    and plan bindings. This does not discard a scientific constraint, infer an
+    information closure, or promote sample estimates to population values.
+    """
+    return [i for i,s in enumerate(c.information)
+            if not (s.operator=='FINITE_SAMPLE' and s.availability=='FINITE_SAMPLE')]
+
+
 def prepare(entry,raw,c,out,*,_mean_order_context=None):
     from .network_policy_dispatch import BASE_CONDITIONS,READING_DECISIONS,target_coordinates
     def stop(state,reason,question=None):
@@ -30,13 +41,15 @@ def prepare(entry,raw,c,out,*,_mean_order_context=None):
         return stop('ADAPTER_NOT_CONNECTED','BOUNDED_D2_E1_FINITE_DOMAIN_REQUIRED')
     if any(s.operator not in ('NODE_SIGNATURE_MEANS','FINITE_SAMPLE','UNKNOWN') for s in c.information):
         return stop('ADAPTER_NOT_CONNECTED','FULL_INFORMATION_CANNOT_BE_DOWNGRADED_TO_MEAN_BOX')
-    if not c.information or any(s.operator!='NODE_SIGNATURE_MEANS' or s.availability!='EXACT_POPULATION_VALUE'
-                                for s in c.information):
+    indices=model_information_indices(c)
+    information=[c.information[i] for i in indices]
+    if not information or any(s.operator!='NODE_SIGNATURE_MEANS' or s.availability!='EXACT_POPULATION_VALUE'
+                                for s in information):
         return stop('NEEDS_INPUT','EXACT_POPULATION_SIGNATURE_MEANS_REQUIRED',
                     '请核对精确总体签名均值的来源、格子和数值；不能使用样本估计替代。')
     if any(not s.source_ids or not s.signature_cells or
            set(s.outcome_nodes)!={v.node for v in s.signature_cells} or
-           any(v.value is None for v in s.signature_cells) for s in c.information):
+           any(v.value is None for v in s.signature_cells) for s in information):
         return stop('NEEDS_INPUT','COMPLETE_EXACT_A4_VALUE_LIST_REQUIRED',
                     '请补齐已声明总体均值的完整对象/自身处理/同伴暴露格子及精确数值。')
     # Partitioning one original table into several JSON rows does not change A4.
@@ -46,11 +59,11 @@ def prepare(entry,raw,c,out,*,_mean_order_context=None):
     from .source_locations import build_catalog
     from cfm_id_llm.network_policy_reading import documents
     catalog=build_catalog(documents(entry['bundle']))
-    source_documents={catalog[sid]['doc_id'] for s in c.information for sid in s.source_ids}
+    source_documents={catalog[sid]['doc_id'] for s in information for sid in s.source_ids}
     supporting_evidence=entry.get('information_evidence_review')
     if len(source_documents)!=1 and supporting_evidence is None:
         return stop('ADAPTER_NOT_CONNECTED','EXACT_SINGLE_SOURCE_TABLE_REQUIRED')
-    cells=[(v.node,v.own,v.exposure) for s in c.information for v in s.signature_cells]
+    cells=[(v.node,v.own,v.exposure) for s in information for v in s.signature_cells]
     if len(cells)!=len(set(cells)):
         return stop('CHECK_BLOCKED','DUPLICATE_A4_CELL_ACROSS_ENTRIES')
     sf=c.mean_sufficiency
@@ -93,7 +106,6 @@ def prepare(entry,raw,c,out,*,_mean_order_context=None):
         any(v.lower is None or v.upper is None or not v.source_ids for v in b.bounds)):
         return stop('NEEDS_INPUT','BOUNDED_MODEL_DECLARATIONS_INCOMPLETE',
                     '请核对逐对象界限、均值界或结果界、期间单位、全部安排范围，以及信息完整性和无额外耦合限制声明。')
-    indices=list(range(len(c.information)))
     binding=sha(dict(entry=entry,raw=raw,method=method,source_indices=indices))
     row=dict(method=method,source_indices=indices,applicability='NOT_CHECKED_BEFORE_SCIENCE_REVIEW',
         reading_worksheet=worksheet(binding,READING_DECISIONS),
@@ -101,6 +113,8 @@ def prepare(entry,raw,c,out,*,_mean_order_context=None):
     out.update(methods=[row],proposed_target=target_coordinates(c),
         a4_projection=dict(kind='DISJOINT_EXACT_CELLS_FROM_ONE_SOURCE_DOCUMENT',
             source_documents=sorted(source_documents),original_entry_indices=indices,cell_count=len(cells)))
+    if len(indices)!=len(c.information):
+        out['a4_projection']['finite_sample_entry_indices']=[i for i in range(len(c.information)) if i not in indices]
     if supporting_evidence is not None:
         out['a4_projection'].update(kind='ONE_EXACT_TABLE_WITH_REVIEWED_SUPPORTING_REFERENCES',
             table_documents=supporting_evidence['table_documents'],supporting_documents=supporting_evidence['supporting_documents'],
@@ -115,6 +129,7 @@ def compile_reviewed(plan,row,records,authority):
     from pfn_pipeline.identification_business import FixedPolicyInquiryV21
     st,target,sources,assumptions,sig,suff=_compile(plan,dict(row,method=R2),records,authority)
     c=NetworkPolicyReading.model_validate(plan['facts']);b=c.bounded_model
+    information=[c.information[i] for i in row['source_indices']]
     if len(sources)>1:
         from pfn_pipeline.identification_policy_r2 import declare_signature_population_source
         nodes={n for source in sources for n in source.outcome_nodes}
@@ -130,11 +145,11 @@ def compile_reviewed(plan,row,records,authority):
         source_id=sources[0].source_id,source_sha256=native_sha(sources[0]),
         information_scope='EXACT_LISTED_SIGNATURE_MEANS_ONLY',
         model_scope='SIGNATURE_MEANS_AND_NODE_BOUNDS_ONLY',availability='EXACT_POPULATION_VALUE',
-        values=[dict(node=v.node,own=v.own,exposure=v.exposure,value=v.value) for s in c.information for v in s.signature_cells],
+        values=[dict(node=v.node,own=v.own,exposure=v.exposure,value=v.value) for s in information for v in s.signature_cells],
         bounds=[dict(node=v.node,lower=v.lower,upper=v.upper) for v in b.bounds],
         bounds_kind=b.bounds_kind,bounds_scope=b.bounds_scope,outcome_definition=b.outcome_definition,
         outcome_unit=b.outcome_unit,outcome_period=b.outcome_period,
-        a4_provenance='Reviewed exact source locators: '+sha([sid for s in c.information for sid in s.source_ids]+
+        a4_provenance='Reviewed exact source locators: '+sha([sid for s in information for sid in s.source_ids]+
             b.listed_means_are_complete_information.source_ids)+'; plan:'+plan['plan_sha256'],
         bounds_provenance='Reviewed bound/model source locators: '+sha(b.source_ids+
             [sid for v in b.bounds for sid in v.source_ids]+b.no_additional_coupling_constraints.source_ids)

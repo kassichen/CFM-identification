@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator, field_validator
 from .source_reference_wire import catalog, expand
 from .information_field_rules import require as require_information_rule
-from .network_design_reading import assignment_schema, validate_assignment_ownership
+from .network_design_reading import assignment_schema, validate_assignment_ownership, PROBABILITIES_DESCRIPTION
 
 VERSION = 'network-policy-reading-1'
 COUNT_RULE = 'BINARY为0/1结果；COUNT为非负整数次数；CONTINUOUS为连续数值结果。计数均值不是整数，COUNT不要求Poisson、不授予有限矩、上界、暴露充分性或PARTIAL。OTHER包括无明确数值含义的类别，UNKNOWN表示未知。'
@@ -47,7 +47,7 @@ class Study(Cited):
 class Assignment(Cited):
     model_config = ConfigDict(json_schema_extra=assignment_schema)
     kind: Literal['INDEPENDENT_BERNOULLI', 'UNIFORM_FIXED_QUOTA', 'TWO_GROUP_FIXED_QUOTA', 'CLUSTER_BERNOULLI', 'MULTI_GROUP_FIXED_QUOTA', 'TWO_STAGE_QUOTA_MIXTURE', 'UNEQUAL_PROBABILITY_FIXED_QUOTA', 'RERANDOMIZED_BALANCED', 'OTHER', 'UNKNOWN']
-    probabilities: dict[str,str] | None
+    probabilities: dict[str,str] | None = Field(description=PROBABILITIES_DESCRIPTION)
     fixed_count: StrictInt | None
     groups: list[list[str]] | None = None
     treated_quotas: list[StrictInt] | None = None
@@ -154,6 +154,26 @@ class BoundedModel(Cited):
         'mean_order_model.no_additional_constraints_beyond_declared_orders records absence of further restrictions.'))
 
 
+DATA_DESCRIPTION_RULE = (
+    '仅保留本份信息的数据说明及其原文来源：观测/回访的取得方式、缺失值处理、'
+    '符号或数值表示、所提供分布的边界。已由operator、availability和覆盖字段表达的内容无需重复。'
+    '也保存本份资料的使用/审核说明，例如总体信息须独立审核、有限样本不能当作总体信息、估计模型须另行核验适用性；这些说明不表示审核已经完成。'
+    '这些说明会保留并交给数据审核，不作为因果识别假设，也不自动满足估计的观测条件。'
+    '对潜在结果、总体均值的界/等式/单调性，新的因果假设，以及改变目标或规定识别方法的要求，'
+    '必须进入additional_restrictions或已有专门字段，不能放在这里绕过审核。'
+    '同段包含数据说明和科学限制时分别保留各自主张；不能以整段归类而丢失真限制。')
+
+class DataDescription(Cited):
+    text: str = Field(pattern=r'\S')
+    source_ids: list[str] = Field(min_length=1, json_schema_extra={'uniqueItems': True})
+
+    @model_validator(mode='after')
+    def unique_sources(self):
+        if len(set(self.source_ids)) != len(self.source_ids):
+            raise ValueError('DATA_DESCRIPTION_REQUIRES_UNIQUE_SOURCES')
+        return self
+
+
 class Information(Cited):
     operator: Literal['NODE_FULL_LAW', 'FULL_JOINT_LAW', 'ASSIGNMENT_NODE_MEANS',
                       'NODE_SIGNATURE_MEANS', 'FINITE_SAMPLE', 'OTHER', 'UNKNOWN'] = Field(description=(
@@ -164,6 +184,7 @@ class Information(Cited):
     outcome_nodes: list[str]
     assignment_cells: list[list[StrictInt]]
     signature_cells: list[SignatureCell]
+    data_description: list[DataDescription] = Field(default_factory=list, description=DATA_DESCRIPTION_RULE)
 
 
 class Note(Cited):
@@ -292,5 +313,11 @@ def parse(bundle, raw, *, binding):
         bounds=c.bounded_model.bounds
         if any(b.node not in nodes for b in bounds) or len({b.node for b in bounds})!=len(bounds):
             raise ValueError('INVALID_BOUND_NODE_SCOPE')
-    return dict(facts=c.model_dump(), reference_binding=dict(context=refs['context'],
+    # Old records without data notes keep their native decoded shape. The raw
+    # model answer remains unchanged and bound to its source-review receipt.
+    data = c.model_dump()
+    for item in data['information']:
+        if not item['data_description']:
+            item.pop('data_description')
+    return dict(facts=data, reference_binding=dict(context=refs['context'],
         context_sha256=refs['context_sha256'],aliases={k:r['source_id'] for k,r in refs['aliases'].items()}))

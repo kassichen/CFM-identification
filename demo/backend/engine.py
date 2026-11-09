@@ -60,6 +60,7 @@ class Run:
     artifacts: dict = field(default_factory=dict)
     attachment_report: dict | None = None
     data: object = None
+    network: object = None
     synthetic: bool = False
     provider: str = 'longcat'
     automatic_review: bool = False
@@ -101,7 +102,7 @@ class Engine:
             return dict(ready=True, configured=credential is not None,
                 provider=credential[0] if credential else 'longcat', providers=PROVIDERS,
                 features=['located_fact_recheck','background_reading_review','typed_assumption_choices','typed_reading_audit',
-                          'information_data_descriptions','explicit_audit_findings'],
+                          'information_data_descriptions','explicit_audit_findings','network_file_input','local_input_preview'],
                 reading_config=capabilities.reading_config().model_dump(mode='json'),
                 identification_capabilities=self.web_capabilities,
                 condition_terms=capabilities.presentation_catalog(),
@@ -180,16 +181,31 @@ class Engine:
         run=Run(owner=owner,synthetic=payload.get('synthetic') is True,
                 automatic_review=payload.get('automatic_review') is True)
         if len(self.runs)>=100:raise ValueError('LOCAL_RUN_LIMIT_RESTART_SERVER')
-        with self.lock:self.runs[run.id]=run
+        with self.lock:
+            selected=payload.get('provider');credential=self.credentials.get(owner)
+            if selected is not None:
+                if selected not in PROVIDERS:raise ValueError('UNKNOWN_PROVIDER')
+                if credential is None or time.time()-credential[2]>8*3600:raise ValueError('API_KEY_REQUIRED')
+                if selected!=credential[0]:raise ValueError('PROVIDER_CREDENTIAL_MISMATCH')
+            run.provider=selected or (credential[0] if credential else 'longcat')
+            self.runs[run.id]=run
         # Input is snapshotted; later edits in the browser start a different run.
         self.launch(run,self._start,deepcopy(payload));return run.id
 
-    def _start(self, run, payload):
+    def preview_uploads(self, owner, payload):
+        run=Run(owner=owner)
+        self._start(run,payload,preview_only=True)
+        return dict(receipt=run.attachment_report['receipt'],
+            factual_data=run.attachment_report.get('factual_data'),
+            table_import=run.artifacts.get('table_import_manifest'),
+            sources=[s for s in run.case['sources'] if s['source_id'].startswith('att_')])
+
+    def _start(self, run, payload, *, preview_only=False):
         self.event(run,'PREPARING','读取业务原文与上传材料')
         uploads=payload.get('files',[])
         if not isinstance(uploads,list) or len(uploads)>10:raise ValueError('AT_MOST_TEN_UPLOADS')
         folder=self.storage/run.id/'uploads';folder.mkdir(parents=True,exist_ok=True)
-        requests=[]; total=0
+        requests=[]; total=0; network_paths={}; table_path=None
         for i,item in enumerate(uploads):
             name=item.get('name','')
             if not isinstance(name,str) or name!=Path(name).name or any(c in name for c in '/\\:'):
@@ -198,8 +214,17 @@ class Engine:
             if total>MAX_UPLOAD or len(raw)>8*1024*1024:raise ValueError('UPLOAD_SIZE_LIMIT')
             path=folder/(str(i)+'_'+name);path.write_bytes(raw)
             role=item.get('role','document')
-            if role!='document':raise ValueError('IDENTIFICATION_DOCUMENT_UPLOAD_ONLY')
-            requests.append(AttachmentRequestV07(path=str(path),label=name))
+            if role in ('network_nodes','network_edges'):
+                if role in network_paths:raise ValueError('每类网络表只上传一份；对象表和关系表各一份。')
+                network_paths[role]=path
+            elif role=='table_data':
+                if table_path:raise ValueError('数值表格每次只上传一份。')
+                table_path=path
+            elif role=='data_dictionary':
+                requests.append(AttachmentRequestV07(path=str(path),label=name,purpose='DATA_DICTIONARY',
+                    sheet=item.get('sheet'),header_row=item.get('header_row',1)))
+            elif role=='document':requests.append(AttachmentRequestV07(path=str(path),label=name))
+            else:raise ValueError('IDENTIFICATION_DOCUMENT_UPLOAD_ONLY')
         report=create_intake(case_id=run.id,business_question=payload['question'].strip(),attachments=requests)
         case=report.case.model_dump(mode='json');run.attachment_report=report.model_dump(mode='json',exclude={'case'})
         example_id=payload.get('example_id')
@@ -220,7 +245,40 @@ class Engine:
                     if len(text)>25000 or characters>80000:raise ValueError('EXAMPLE_SOURCE_SIZE_LIMIT')
                     seen.add(sid);selected.append({**originals[sid],'text':text})
             case['sources']=selected+case['sources']
+        if network_paths:
+            if set(network_paths)!={'network_nodes','network_edges'}:raise ValueError('请同时上传对象表和关系表。')
+            from cfm_id_llm.network_files import load_network
+            run.network=load_network(network_paths['network_nodes'],network_paths['network_edges'],payload.get('network'))
+        elif payload.get('network') is not None:raise ValueError('填写网络说明时，请同时上传对象表和关系表。')
+        if table_path:
+            from cfm_id_llm.record_files import read_records
+            records=read_records(table_path,payload.get('table_mapping'),run.network)
+            self.save(run,'table_import_manifest',records['manifest'])
+            self.save(run,'factual_data_inventory',records['inventory'])
+            for sid,label,value in (
+                ('uploaded_data_schema','数据说明（用户提供）',records['schema']),
+                ('uploaded_data_inventory','上传文件的实际记录范围（本地检查）',records['inventory'])):
+                if any(x['source_id']==sid for x in case['sources']):raise ValueError('DATA_SOURCE_ID_COLLISION')
+                case['sources'].append(dict(source_id=sid,kind='OTHER',label=label,text=json.dumps(value,ensure_ascii=False)))
+            run.attachment_report['factual_data']=dict(nodes=len(records['schema']['node_ids']),
+                features=len(records['schema']['feature_names']),observed=len(records['observed_indices']),
+                note='只传字段说明与实际记录范围；不由样本推定总体信息，不调用估计。')
+        elif payload.get('table_mapping') is not None:raise ValueError('有列映射但没有表格数据，请重新选择文件。')
+        if run.network:
+            if any(x['source_id']=='uploaded_network' for x in case['sources']):raise ValueError('NETWORK_SOURCE_ID_COLLISION')
+            case['sources'].append(run.network.source());self.save(run,'network_file_manifest',run.network.manifest())
+            run.attachment_report['network']=dict(reference=run.network.token,nodes=len(run.network.nodes),
+                edges=len(run.network.edges),completeness=run.network.completeness)
+        from cfm_id_llm.upload_receipt import receipt
+        run.attachment_report['receipt']=receipt(run.attachment_report)
         run.case=case;self.save(run,'case',case)
+        if preview_only:return
+        if not run.attachment_report['receipt']['ready']:
+            run.result=dict(state='NEEDS_INPUT',reason_code='ATTACHMENT_EXTRACTION_INCOMPLETE',backend_called=False,
+                independent_replay=False,message='部分附件未读完整，请按上传回执修正文件，再开始读取。',
+                clarification_questions=run.attachment_report['receipt']['issues'])
+            self.event(run,'STOPPED','附件未完整读取，尚未调用模型；请修正上传文件后重新提交。')
+            return
         self._read_case(run)
 
     def _read_case(self,run):
@@ -349,13 +407,34 @@ class Engine:
         """One explicit schema retry; never edit candidate data or grant review."""
         from pydantic import ValidationError
         from cfm_id_llm.fact_wire_models import model_for
-        raw=self.call(run,entry,'facts')
+        from cfm_id_llm import file_coordinates as fact_coordinates
+        from cfm_id_llm import network_file_binding
+        from cfm_id_llm.network_files import NetworkFileError
+        tables=None
+        if run.network is not None:
+            entry,tables=fact_coordinates.prepare_for_graph(entry,list(run.network.nodes),run.network.edges)
+        entry,network_binding=network_file_binding.prepare(entry,run.network)
+        def read(request):
+            answer=self.call(run,request,'facts')
+            candidate=fact_coordinates.expand(answer,tables)
+            candidate=network_file_binding.expand(candidate,network_binding)
+            if tables is not None or network_binding is not None:
+                self.save(run,'facts_expanded',candidate)
+            if network_binding is not None:
+                self.save(run,'network_file_binding',dict(reference=run.network.token,
+                    source_ids=network_binding['source_ids'],arrays_match=True,scientific_approval=False))
+            return candidate
         model=model_for(entry)
-        if model is None:return raw
         try:
-            model.model_validate(deepcopy(raw))
+            raw=read(entry)
+            if model is not None:model.model_validate(deepcopy(raw))
             return raw
+        except (fact_coordinates.CoordinateError,NetworkFileError) as exc:
+            raw=run.artifacts['facts_candidate']
+            diagnostics=[dict(code=str(exc),path='/study or /information/arm_cells')]
         except ValidationError as exc:
+            if tables is not None or network_binding is not None:
+                raw=run.artifacts['facts_candidate']
             diagnostics=[dict(path='/'+'/'.join(map(str,e['loc'])),code=e['type'],message=e['msg'])
                          for e in exc.errors(include_input=False,include_url=False)]
         self.save(run,'facts_format_validation',dict(valid=False,errors=diagnostics))
@@ -369,8 +448,8 @@ class Engine:
         request[key]+='\n\n'+json.dumps(dict(format_feedback=dict(errors=diagnostics,previous_response=raw,
             instruction='上次输出违反本次Schema/字段组合规则。请根据同一份原材料重新读取并输出完整候选；不添加条件、不自动补事实、不批准假设。后续来源与科学审核仍须执行。')),ensure_ascii=False)
         self.event(run,'READING_FACTS','读取输出存在字段组合错误，后台进行一次格式复查；原材料保持不变')
-        raw=self.call(run,repair,'facts')
-        model.model_validate(deepcopy(raw))
+        raw=read(repair)
+        if model is not None:model.model_validate(deepcopy(raw))
         self.save(run,'facts_format_retry_validation',dict(valid=True,scientific_approval=False))
         return raw
 
@@ -384,15 +463,8 @@ class Engine:
             # query worksheet is still present.
             if run.result is not None:return
             if run.review_kind not in audit.STAGES:return
-            # Residual notes need a full reread before they can be handed to a
-            # theorem adapter. This asks about ownership; it never deletes them.
-            candidate=(run.submission or {}).get('candidate',{})
-            if run.review_kind=='source' and run.automatic_rechecks<1 and (
-                candidate.get('additional_restrictions') or candidate.get('unresolved')):
-                preview=recovery.prepare(run,allow_busy=True)
-                if preview['available']:
-                    entry,feedback=recovery.request(run,preview['binding_sha256'],allow_busy=True)
-                    run.automatic_rechecks+=1;self._recheck(run,entry,feedback);continue
+            # Audit first: residual notes can be genuine restrictions. Spend
+            # the bounded reread only on a located model-reading error.
             self.event(run,'REVIEWING_READING','正在后台核对业务解释与原文来源，不需要逐字段操作')
             request,fields,sources=audit.request(run)
             number=1+sum(k.startswith('reading_audit_') and k.endswith('_request') for k in run.artifacts)
@@ -432,11 +504,13 @@ class Engine:
             if answer['verdict']=='PASS':
                 run.stage='REVIEW_REQUIRED'
                 self._review(run,audit.records(run,answer));continue
-            # One bounded, source-located reread for residual notes. No automatic loops.
+            # Reuse validated field/source locations, not a generic note sweep.
+            # Feedback remains a request to reread, never a replacement answer.
             if answer['verdict']=='READING_ERROR' and run.automatic_rechecks<1:
-                preview=recovery.prepare(run,allow_busy=True)
+                preview=recovery.prepare(run,allow_busy=True,audit_findings=answer['issues'])
                 if preview['available']:
-                    entry,feedback=recovery.request(run,preview['binding_sha256'],allow_busy=True)
+                    entry,feedback=recovery.request(run,preview['binding_sha256'],allow_busy=True,
+                                                    audit_findings=answer['issues'])
                 else:entry=None
                 if entry:
                     run.automatic_rechecks+=1;self._recheck(run,entry,feedback);continue

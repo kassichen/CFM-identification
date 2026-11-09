@@ -97,8 +97,9 @@ def request(run):
             payload['field_contract']=contract.public_constraints(run.entry,paths)
             if contract.reader_id=='NETWORK_RANDOMIZED_EFFECT_FACTS':
                 from cfm_id.network_effect_dispatch import METHOD, ASSUMPTION_REQUIREMENTS
+                from cfm_id_llm.assumption_choices import CONDITIONS
                 payload['method_requirements']=dict(method=METHOD, required_conditions=sorted(ASSUMPTION_REQUIREMENTS),
-                    optional_condition='MEAN_EXPOSURE_SUFFICIENCY', optional_condition_required=False,
+                    optional_condition='MEAN_EXPOSURE_SUFFICIENCY', optional_conditions=list(CONDITIONS), optional_condition_required=False,
                     scope='Only the existing original-design conditional local-effect adapter; not a theorem or scientific approval.')
                 from cfm_id_llm.network_effect_reading import DATA_DESCRIPTION_RULE
                 payload['information_ownership_check']=dict(rule=DATA_DESCRIPTION_RULE,

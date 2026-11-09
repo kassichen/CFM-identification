@@ -42,6 +42,25 @@ def test_shared_definition_does_not_repair_missing_probability_claim():
     r=d.execute(s,'q1',**dict(o,source_review=review),research_protocol_selected=True)
     assert not r['backend_called'] and o['candidate']['assignment']['source_ids']==[]
 
+
+def test_fixed_quota_probability_description_matches_schema_and_local_ownership():
+    from jsonschema import Draft202012Validator
+    from cfm_id_llm.network_design_reading import PROBABILITIES_DESCRIPTION, missing_assignment
+    from cfm_id_llm.network_policy_reading import Assignment
+    _,e,o=setup('mean',True)
+    schema=json.JSONDecoder().raw_decode(e['request']['user'])[0]['output_schema']
+    definition=dict(schema['$defs']['Assignment'],**{'$defs':schema['$defs']})
+    assert definition['properties']['probabilities']['description']==PROBABILITIES_DESCRIPTION
+    a=deepcopy(o['candidate']['assignment'])
+    assert a['kind']=='UNIFORM_FIXED_QUOTA' and a['probabilities'] is None
+    Draft202012Validator(definition).validate(a)
+    assert not missing_assignment(Assignment.model_validate(a),o['candidate']['study']['nodes'])
+    wrong=dict(a,probabilities={n:'1/2' for n in o['candidate']['study']['nodes']})
+    assert list(Draft202012Validator(definition).iter_errors(wrong))
+    with pytest.raises(ValueError,match='CONFLICTING_DESIGN_FIELDS'):Assignment.model_validate(wrong)
+    missing=dict(a,kind='INDEPENDENT_BERNOULLI',fixed_count=None)
+    assert 'assignment.probabilities' in missing_assignment(Assignment.model_validate(missing),o['candidate']['study']['nodes'])
+
 def test_old_profile_keeps_record_local_evidence_and_new_rechecks_keep_contract():
     s,e,o=mean('r1b','network-source-selections-mean-orders-1')
     old=sources.prepare(e,o['candidate'])

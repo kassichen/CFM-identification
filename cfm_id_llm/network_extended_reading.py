@@ -13,6 +13,7 @@ from .network_policy_reading import (Record, Cited, Declaration, Study, Assignme
 from .network_effect_reading import LocalArm, EffectInformation
 from .network_observational_policy_reading import Regime, Conditioning, AssignmentMass, request_for_model
 from .source_reference_wire import catalog, expand
+from . import network_population_contract as population_contract
 
 ARM='NETWORK_RANDOMIZED_ARM_FACTS'
 MIX='NETWORK_FINITE_POLICY_FACTS'
@@ -23,7 +24,7 @@ class ArmTarget(Cited):
     population: list[str] | None
     first: LocalArm
     averaging: Literal['ORIGINAL_DESIGN_CONDITIONAL','OTHER','UNKNOWN']
-    population_fixed_before_assignment: Declaration
+    population_fixed_before_assignment: Declaration = Field(description=population_contract.RULE)
 
 class PolicyComponent(Cited):
     assignment: dict[str,StrictInt]

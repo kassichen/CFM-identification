@@ -26,7 +26,14 @@ Object.assign(labels,{
 const methodNames={R1B_FULL_ASSIGNMENT:'完整分配识别',R1A_COMPOSITION:'局部效应组合识别',R2_MEAN_SUFFICIENCY:'均值充分性识别'};
 async function api(path,body){const res=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:body===undefined?undefined:JSON.stringify(body)});const value=await res.json();if(!res.ok)throw Error(value.error||'请求未完成');return value;}
 function message(text,error=false){$('#input-message').textContent=text;$('#input-message').className='message'+(error?' error':'');}
-async function health(){const h=await api('/api/health');csrf=h.csrf;serviceFeatures=h.features||[];conditionTerms=h.condition_terms||{};$('#connection').textContent='本地服务已连接';$('#key-status').textContent=h.configured?'已配置 '+h.providers[h.provider].model:'尚未配置 API Key';if(!h.configured)$('#api-settings').open=true;return h;}
+function syncProviderOptions(h){
+ const select=$('#provider'), providers=h.providers||{}, prior=select.value;
+ const html=Object.entries(providers).map(([id,p])=>`<option value="${esc(id)}">${esc(p.model)}</option>`).join('');
+ if(select.innerHTML!==html)select.innerHTML=html;
+ const configured=h.configured&&providers[h.provider]?h.provider:null;
+ select.value=(providers[prior]?prior:null) || configured || Object.keys(providers)[0] || '';
+}
+async function health(){const h=await api('/api/health');csrf=h.csrf;serviceFeatures=h.features||[];conditionTerms=h.condition_terms||{};syncProviderOptions(h);$('#connection').textContent='本地服务已连接';$('#key-status').textContent=h.configured?'已配置 '+h.providers[h.provider].model:'尚未配置 API Key';if(!h.configured)$('#api-settings').open=true;return h;}
 function claim(x){if(x===null||x===undefined)return '未提供';if(typeof x==='string')return x==='UNKNOWN'?'原文未提供／保持未知':x;if(x.value!==undefined)return x.value??x.reason??x.state;if(x.reason)return x.reason;if(x.kind&&Object.keys(x).length===1)return x.kind;return JSON.stringify(x,null,2);}
 function selects(options,value,attrs=''){return `<select ${attrs}>${options.map(x=>`<option value="${esc(x)}" ${x===value?'selected':''}>${esc(choiceLabels[x]||x)}</option>`).join('')}</select>`;}
 function renderExamples(){
@@ -37,7 +44,7 @@ function renderExamples(){
  $('#examples').onclick=e=>{if(e.target.dataset.load!==undefined)loadExample(examples[+e.target.dataset.load]);if(e.target.dataset.view!==undefined)showExample(examples[+e.target.dataset.view]);};
 }
 function loadExample(x){selected=x;$('#question').value=x.case.business_question;$('#synthetic').checked=true;$('#selected-example').hidden=false;$('#selected-example').innerHTML=`<div class="selected">已载入「${esc(x.title)}」及 ${x.case.sources.length} 份配套说明。可以修改问题，系统将重新读取。</div>`;$('#example-documents').hidden=false;$('#example-sources').innerHTML=x.case.sources.map(s=>`<article class="source-doc" data-source="${esc(s.source_id)}"><label><input type="checkbox" class="include-source" checked>使用这份说明：${esc(s.label||s.source_id)}</label><textarea rows="4" class="source-edit">${esc(s.text)}</textarea></article>`).join('');message('示例材料已载入；“看验收记录”与“开始读取业务”是两个不同操作。');$('#question').focus();}
-function clearInput(){selected=null;$('#question').value='';$('#documents').value='';$('#file-list').innerHTML='';$('#selected-example').hidden=true;$('#example-documents').hidden=true;$('#synthetic').checked=false;message('');}
+function clearInput(){selected=null;$('#question').value='';$('#documents').value='';$('#network-nodes').value='';$('#network-edges').value='';$('#network-description').value='';$('#network-kind').value='';$('#network-completeness').value='UNKNOWN';resetTableInputs();$('#file-list').innerHTML='';$('#selected-example').hidden=true;$('#example-documents').hidden=true;$('#synthetic').checked=false;message('');}
 $('#question').oninput=()=>{
  if(!selected)return;
  const changed=$('#question').value.trim()!==selected.case.business_question.trim();
@@ -55,10 +62,10 @@ $('#save-key').onclick=async()=>{let key=$('#api-key').value.trim();$('#api-key'
 $('#clear-key').onclick=async()=>{await api('/api/credentials',{provider:$('#provider').value,key:''});$('#api-key').value='';await health();};
 $('#clear-input').onclick=clearInput;$('#close-saved').onclick=()=>$('#saved').hidden=true;
 $('#start').onclick=async()=>{
- try{if(!$('#allow-send').checked)throw Error('请先确认允许将业务文字与提取材料发送给所选模型。');const h=await health();if(!h.configured)throw Error('请先配置 API Key。');if(!serviceFeatures.includes('background_reading_review'))throw Error('后台仍是旧版本。请更新本地服务后使用自动流程；当前已保存的读取不会被删除。');if($('#question').value.trim().length<3)throw Error('请先描述业务问题。');$('#start').disabled=true;
- const docFiles=Array.from($('#documents').files), all=docFiles;if(all.reduce((s,f)=>s+f.size,0)>20*1024*1024||all.some(f=>f.size>8*1024*1024))throw Error('文件超过大小限制。');
- const files=await Promise.all(docFiles.map(f=>upload(f,'document')));
- const response=await api('/api/start',{question:$('#question').value,files,example_id:selected?.id||null,...(selected?{source_edits:Array.from(document.querySelectorAll('[data-source]')).filter(e=>e.querySelector('.include-source').checked).map(e=>({source_id:e.dataset.source,text:e.querySelector('.source-edit').value}))}:{}),synthetic:$('#synthetic').checked,allow_send:true,automatic_review:true});runId=response.id;history.replaceState(null,'','#run='+runId);reviewSignature='';$('#workspace').hidden=false;$('#saved').hidden=true;$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});message('已提交本次输入。下方显示真实进度，编辑上方文字不会改写正在执行的任务。');poll();
+ if($('#start').disabled)return;$('#start').disabled=true;
+ try{if(!$('#allow-send').checked)throw Error('请先确认允许将业务文字与提取材料发送给所选模型。');const h=await health();if(!h.configured)throw Error('请先配置 API Key。');if($('#provider').value!==h.provider)throw Error('所选模型与已配置密钥不对应，请先保存模型设置。');if(!serviceFeatures.includes('background_reading_review'))throw Error('后台仍是旧版本。请更新本地服务后使用自动流程；当前已保存的读取不会被删除。');if($('#question').value.trim().length<3)throw Error('请先描述业务问题。');$('#start').disabled=true;
+ const uploadInput=await buildUploadInput();await checkUploadInput(uploadInput);
+ const response=await api('/api/start',{question:$('#question').value,provider:$('#provider').value,...uploadInput,example_id:selected?.id||null,...(selected?{source_edits:Array.from(document.querySelectorAll('[data-source]')).filter(e=>e.querySelector('.include-source').checked).map(e=>({source_id:e.dataset.source,text:e.querySelector('.source-edit').value}))}:{}),synthetic:$('#synthetic').checked,allow_send:true,automatic_review:true});runId=response.id;history.replaceState(null,'','#run='+runId);reviewSignature='';$('#workspace').hidden=false;$('#saved').hidden=true;$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});message('已提交本次输入。下方显示真实进度，编辑上方文字不会改写正在执行的任务。');poll();
  }catch(e){message(e.message,true);}finally{$('#start').disabled=false;}
 };
 async function poll(){clearTimeout(timer);try{const run=await api('/api/run?id='+encodeURIComponent(runId));current=run;renderRun(run);if(run.busy)timer=setTimeout(poll,1600);}catch(e){$('#progress').textContent='连接暂时中断：'+e.message+'。3 秒后尝试获取当前任务状态，不重复调用模型。';timer=setTimeout(poll,3000);}}
@@ -582,7 +589,8 @@ function resultHTML(result,estimate){
  if(readingReasons[reason])html+=`<p>${esc(readingReasons[reason][1])}</p>`;
  if(result.processing_explanation)html+=`<p>${esc(result.processing_explanation)}</p>`;
  const choices=(result.assumption_choices_review?.retained||[]).filter(c=>c.required===false);
- if(choices.length)html+='<p class="muted">'+choices.map(c=>esc(c.condition==='MEAN_EXPOSURE_SUFFICIENCY'?('本次'+(c.status==='NOT_ADOPTED'?'不采用':'尚未决定是否采用')+'同伴分组的均值充分性；所用方法不需要这项假设。'):c.condition)).join('；')+'</p>';
+ const choiceLabels={MEAN_EXPOSURE_SUFFICIENCY:'同伴分组的均值充分性',OUTCOME_EXPOSURE_SUFFICIENCY:'同伴分组确定每个潜在结果的假设'};
+ if(choices.length)html+='<p class="muted">'+choices.map(c=>esc(choiceLabels[c.condition]?('本次'+(c.status==='NOT_ADOPTED'?'不采用':'尚未决定是否采用')+choiceLabels[c.condition]+'；所用方法不需要这项假设。'):c.condition)).join('；')+'</p>';
  const questions=result.clarification_questions||[];if(questions.length)html+='<ul>'+questions.map(q=>`<li>${esc(typeof q==='string'?q:JSON.stringify(q))}</li>`).join('')+'</ul>';
  html+=resultConditionsHTML(result);
  if(!good)html+='<p class="muted">'+(state==='NEEDS_INPUT'?'可以按上面的具体问题补充说明；不知道或尚未决定也可以如实填写。':'本次尚未得到认证结论，不等于已经证明不可识别；不需要为了通过而改变你的研究条件。')+'</p>';

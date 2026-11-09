@@ -59,9 +59,11 @@ def make_server(engine, port=8770):
             try:
                 owner=self.identity(create=path=='/')
                 if path=='/':return self.send(200,(PUBLIC/'index.html').read_bytes(),'text/html; charset=utf-8')
-                if path in ('/app.js','/style.css','/favicon.svg'):
-                    mime={'/app.js':'text/javascript','/style.css':'text/css','/favicon.svg':'image/svg+xml'}[path]
+                if path in ('/app.js','/input-files.js','/style.css','/favicon.svg'):
+                    mime={'/input-files.js':'text/javascript','/app.js':'text/javascript','/style.css':'text/css','/favicon.svg':'image/svg+xml'}[path]
                     return self.send(200,(PUBLIC/path[1:]).read_bytes(),mime+'; charset=utf-8')
+                if path in ('/templates/network_nodes.csv','/templates/network_edges.csv'):
+                    return self.send(200,(PUBLIC/path[1:]).read_bytes(),'text/csv; charset=utf-8')
                 if not owner:return self.send(401,{'error':'OPEN_HOME_FIRST'})
                 if path=='/api/health':return self.send(200,{**engine.health(owner),'csrf':sessions[owner]})
                 if path=='/api/examples':return self.send(200,engine.examples)
@@ -86,6 +88,19 @@ def make_server(engine, port=8770):
                 if not isinstance(value,dict):raise ValueError('JSON_OBJECT_REQUIRED')
                 if self.path=='/api/credentials':
                     return self.send(200,engine.credential(owner,value['provider'],value.get('key','')))
+                if self.path in ('/api/table-preview','/api/input-preview'):
+                    # Local only, no credentials or model request required.
+                    try:
+                        if self.path=='/api/input-preview': result=engine.preview_uploads(owner,value)
+                        else:
+                            import base64
+                            from cfm_id_llm.tabular_files import preview
+                            result=preview(base64.b64decode(value['content'],validate=True),value['name'],value.get('sheet'),value.get('header_row',1))
+                        return self.send(200,result)
+                    except (ValueError,KeyError,TypeError) as exc:
+                        from pydantic import ValidationError
+                        msg='请填写完整的列对应、变量说明和结果类型。' if isinstance(exc,ValidationError) else str(exc)[:500]
+                        return self.send(400,{'error':msg})
                 if self.path=='/api/start':return self.send(202,{'id':engine.start(owner,value)})
                 if self.path=='/api/action':
                     engine.action(owner,value['id'],value['action'],value.get('payload',{}));return self.send(202,{'id':value['id']})

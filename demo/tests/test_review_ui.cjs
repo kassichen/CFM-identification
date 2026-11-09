@@ -44,6 +44,7 @@ function harness(view) {
     },
   });
   vm.runInContext(app.replace(/init\(\);\s*$/, ''), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../input-files.js'),'utf8'),context);
   const terms=JSON.parse(fs.readFileSync(path.join(__dirname,'../condition_terms.json'),'utf8'));
   context.catalog=Object.fromEntries(Object.entries(terms).map(([key,[term,label,category]])=>[key,{key,term,label,category,text:label}]));
   vm.runInContext('conditionTerms=catalog;',context);

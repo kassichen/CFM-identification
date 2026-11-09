@@ -8,12 +8,13 @@ from fractions import Fraction
 import json
 from typing import Literal
 from pydantic import Field, StrictInt, StrictStr, model_validator
-from .network_policy_reading import Record, Cited, Declaration, Study, Assignment, Exposure, FirstStageExclusion, Note, documents
+from .network_policy_reading import Record, Cited, Declaration, Study, Assignment, Exposure, FirstStageExclusion, Note, documents, DataDescription, DATA_DESCRIPTION_RULE
 from . import network_design_reading as components
 from .network_statement_reading import DesignFacts, SelectedScienceStatements
 from .source_reference_wire import catalog, expand
 from . import effect_information_rules as information_rules
 from . import assumption_choices as choice_contract
+from . import network_population_contract as population_contract
 
 VERSION = 'network-randomized-effect-reading-1'
 
@@ -38,15 +39,6 @@ RESIDUAL_ROLES = {
         '只有材料完全未提及某项内容时，才可用空source_ids表示无可引用的声明；不得给未出现的话编造来源。'
         '未给出符号总体均值的数值不是缺项。没有另需说明的缺项或冲突时返回空列表。'),
 }
-
-DATA_DESCRIPTION_RULE = (
-    '仅保留本份信息的数据说明及其原文来源：观测/回访的取得方式、缺失值处理、'
-    '符号或数值表示、所提供分布的边界。已由operator、availability和覆盖字段表达的内容无需重复。'
-    '也保存本份资料的使用/审核说明，例如总体信息须独立审核、有限样本不能当作总体信息、估计模型须另行核验适用性；这些说明不表示审核已经完成。'
-    '这些说明会保留并交给数据审核，不作为因果识别假设，也不自动满足估计的观测条件。'
-    '对潜在结果、总体均值的界/等式/单调性，新的因果假设，以及改变目标或规定识别方法的要求，'
-    '必须进入additional_restrictions或已有专门字段，不能放在这里绕过审核。'
-    '同段包含数据说明和科学限制时分别保留各自主张；不能以整段归类而丢失真限制。')
 
 # Public field responsibilities, independent of case text and mathematical route.
 CITATION_GROUPS = {
@@ -79,7 +71,7 @@ class EffectTarget(Cited):
     second: LocalArm
     population: list[str] | None
     aggregation: Literal['SINGLE', 'EQUAL_MEAN', 'OTHER', 'UNKNOWN']
-    population_fixed_before_assignment: Declaration
+    population_fixed_before_assignment: Declaration = Field(description=population_contract.RULE)
     remaining_assignment: Literal['ORIGINAL_DESIGN_CONDITIONAL', 'OTHER', 'UNKNOWN']
     remaining_source_ids: list[str]
     shared_outcome_and_context: Declaration
@@ -89,17 +81,6 @@ class ArmCell(Record):
     node: str
     own: StrictInt
     exposure: StrictInt | StrictStr
-
-
-class DataDescription(Cited):
-    text: str = Field(pattern=r'\S')
-    source_ids: list[str] = Field(min_length=1, json_schema_extra={'uniqueItems': True})
-
-    @model_validator(mode='after')
-    def unique_sources(self):
-        if len(set(self.source_ids)) != len(self.source_ids):
-            raise ValueError('DATA_DESCRIPTION_REQUIRES_UNIQUE_SOURCES')
-        return self
 
 
 class EffectInformation(Cited):
@@ -151,6 +132,9 @@ information保留每份信息的来源及覆盖范围，读取的是“材料提
 unresolved的引用由缺项是怎样得知的决定：原文明说“未提供”“未决定”时引用这段原文；材料完全没提时才保留空来源，不制造证据。保留实际未知、未提供的范围与冲突，不把符号信息没有数值当作缺项。各字段无相应主张时用规定的null/UNKNOWN/空列表，不填职责口号或自评。格式正确和引用存在不代表语义正确，仍须独立审核。'''
 SYSTEM += "\n" + components.ASSIGNMENT_GUIDANCE + "\n" + components.EXPOSURE_GUIDANCE + "\n" + components.STAGE_GUIDANCE
 SYSTEM += "\n" + choice_contract.RULE
+SYSTEM = SYSTEM.replace(
+    'population_fixed_before_assignment按原文独立填写，不能由名单存在推定。',
+    'population_fixed_before_assignment：'+population_contract.RULE)
 
 
 def reference_catalog(bundle, *, binding):

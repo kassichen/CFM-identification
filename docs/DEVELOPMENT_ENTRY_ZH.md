@@ -4,7 +4,7 @@
 
 ## 源码位置
 
-本独立仓库从根目录安装和运行，下列路径均相对仓库根目录。独立网页位于 `demo/`，连接层位于 `demo/backend/`；无需外层全流程项目。负责人在维护工作区开发，验收后同步本发布副本。
+本页路径相对 Identification 包根：团队仓库中为 `identification/`，个人仓库中就是仓库根。工作源码的包内 `demo/` 是纯 ID 网页，仅发布到个人仓库；团队仓库外层 `autocfm/live_demo/` 与 `demo/` 负责全链路网页，不重复发布包内网页。日常仍在原工作源码维护，验收后同步两份发布副本。
 
 历史验收文档中的目录名描述当时的实验位置，不是当前安装路径；运行产物和本地 API 记录不随源码发布。
 
@@ -32,8 +32,9 @@
 | `tests_gateway/` | 读取、来源、审核、分派、恢复、兼容与完整链路检查 | 按职责登记测试，不按每轮修改复制一套 |
 | `assets/` | 固定材料、Mock、回归和历史展示资源 | 不是新算法的存放处，不接收密钥和新在线结果 |
 | `literature_support/` | 文献卡、项目数学合同与实现的导航索引 | 文献支撑、项目推导、运行覆盖和测试结果是四件事；不建第二份能力登记 |
-| `docs/` | 当前合同、操作与扩展规则 | 历史实验进入 `history/`；当前验收看 `DELIVERY_READINESS_ZH.md` |
-| `skills/` | 宿主操作说明及读取资源导航 | 当前主配置实际注入的模型Skill位于`cfm_id_llm/resources/causal_business_reading/`；宿主说明不重复注入，不替代Schema与审核 |
+| `docs/` | 当前合同、操作与扩展规则 | 历史实验进入 `history/`；当前验收看 `RELEASE_ACCEPTANCE_ZH.md`；`DELIVERY_READINESS_ZH.md` 保留当时的安装记录 |
+| `skills/` | 宿主操作说明及读取资源导航 | 模型实际使用的 A0 与网络事实 Skill 分别在 `cfm_id_llm/resources/causal_business_reading/`、`network_fact_reading/`；宿主说明不重复注入，不替代Schema与审核 |
+| `demo/` | 纯 ID 网页、后端适配、示例及专门测试 | 输出公式、条件和重放；不提供估计或 Policy，不能导入其实现 |
 | `scripts/` | 测试、构建、检查的薄入口 | 不放业务判定或定理 |
 | `identification_only/` | 旧原生报告表达合同 | 兼容保留，不是所有识别能力的公共入口 |
 | `predevelopment/` | 早期两阶段设计的探索原型 | 不代表已上线能力，保留导入兼容 |

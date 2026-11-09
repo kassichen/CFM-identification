@@ -29,7 +29,7 @@ MAX_TABLE_HEADERS = 50
 MAX_TABLE_SCAN_ROWS = 10000
 MAX_ARCHIVE_INFLATED = 16 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 1000
-SUPPORTED_SUFFIXES = frozenset({'.txt', '.md', '.json', '.pdf', '.csv', '.xlsx', '.docx'})
+SUPPORTED_SUFFIXES = frozenset({'.txt', '.md', '.json', '.pdf', '.csv', '.tsv', '.xlsx', '.docx'})
 
 
 class AttachmentError(ValueError):
@@ -40,6 +40,9 @@ class AttachmentRequestV07(StrictModel):
     path: str = Field(min_length=1, max_length=2048)
     kind: SourceKind = SourceKind.OTHER
     label: str | None = Field(default=None, max_length=200)
+    purpose: Literal['DOCUMENT', 'DATA_DICTIONARY'] = 'DOCUMENT'
+    sheet: str | None = None
+    header_row: int = Field(default=1, ge=1, le=10001)
 
 
 class AttachmentRecordV07(StrictModel):
@@ -81,6 +84,7 @@ def _clip(text: str, warnings: list[str]) -> str:
         warnings.append('CONTENT_TRUNCATED')
         text = text[:MAX_SOURCE_CHARS].rstrip() + '\n[CONTENT_TRUNCATED: subsequent text not reviewed]'
     if not text:
+        warnings.append('NO_EXTRACTABLE_TEXT')
         return '[NO_EXTRACTABLE_TEXT]'
     return text
 
@@ -113,15 +117,34 @@ def _zip_xml(archive: ZipFile, name: str, max_bytes: int = 4 * 1024 * 1024) -> E
 def _read_docx(raw: bytes, warnings: list[str]) -> str:
     z = _safe_zip(raw)
     try:
-        root = _zip_xml(z, 'word/document.xml')
         ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-        paragraphs = []
-        # Includes table content with paragraph context, ignores deleted text.
-        for p in root.findall('.//w:p', ns):
-            content = ''.join(t.text or '' for t in p.findall('.//w:t', ns)).strip()
-            if content:
-                paragraphs.append(content)
-        return _clip('\n'.join(f'段落 {i}: {v}' for i, v in enumerate(paragraphs, 1)), warnings)
+        import json
+        pieces=[]
+        parts=['word/document.xml']+[n for n in sorted(z.namelist()) if re.fullmatch(r'word/(footnotes|endnotes|header\d+|footer\d+)\.xml',n)]
+        for part in parts:
+            root=_zip_xml(z,part)
+            def paragraph(p):
+                value=''.join(t.text or '' for t in p.findall('.//w:t',ns)).strip()
+                refs=p.findall('.//w:footnoteReference',ns)+p.findall('.//w:endnoteReference',ns)
+                return value+''.join('[注释编号 '+r.get('{'+ns['w']+'}id','?')+']' for r in refs)
+            def walk(el):
+                tag=el.tag.rsplit('}',1)[-1]
+                if tag=='p':
+                    text=paragraph(el)
+                    if text: pieces.append(f'{part} 段落 {len(pieces)+1}: {text}')
+                elif tag=='tbl':
+                    for i,row in enumerate(el.findall('w:tr',ns),1):
+                        cells=['\n'.join(paragraph(p) for p in cell.findall('.//w:p',ns)) for cell in row.findall('w:tc',ns)]
+                        pieces.append(f'{part} 表格行 {i}: '+json.dumps(cells,ensure_ascii=False))
+                    if el.findall('.//w:gridSpan',ns) or el.findall('.//w:vMerge',ns): warnings.append('DOCX_MERGED_TABLE:'+part)
+                else:
+                    if tag in ('footnote','endnote'): pieces.append(part+' 注释编号 '+el.get('{'+ns['w']+'}id','?'))
+                    for child in el: walk(child)
+            walk(root)
+            if any(e.tag.rsplit('}',1)[-1] in ('drawing','pict','object','oMath','altChunk','del','ins') for e in root.iter()):
+                warnings.append('DOCX_VISUAL_OR_REVISION_NOT_FULLY_READ:'+part)
+        if 'word/comments.xml' in z.namelist(): warnings.append('DOCX_COMMENTS_NOT_READ')
+        return _clip('\n'.join(pieces), warnings)
     finally:
         z.close()
 
@@ -143,7 +166,11 @@ def _read_pdf(raw: bytes, warnings: list[str]) -> str:
             extracted = (reader.pages[idx].extract_text() or '').strip()
             if extracted:
                 pieces.append(f'第 {idx + 1} 页:\n{extracted}')
+                if reader.pages[idx].images: warnings.append(f'PDF_IMAGE_CONTENT_NOT_READ:PAGE_{idx+1}')
+            else:
+                warnings.append(f'PDF_PAGE_NO_TEXT:PAGE_{idx+1}')
             if sum(len(x) for x in pieces) >= MAX_SOURCE_CHARS:
+                if idx+1<count: warnings.append('PDF_REMAINING_PAGES_NOT_READ')
                 break
         if not pieces:
             warnings.append('SCANNED_OR_IMAGE_ONLY_PDF_NO_OCR')
@@ -277,7 +304,7 @@ def _extract(raw: bytes, path: Path, warnings: list[str]) -> tuple[str, str]:
         return extracted, ('NO_EXTRACTABLE_TEXT' if 'SCANNED_OR_IMAGE_ONLY_PDF_NO_OCR' in warnings else 'TEXT_EXCERPT')
     if suffix == '.docx':
         return _read_docx(raw, warnings), 'TEXT_EXCERPT'
-    if suffix == '.csv':
+    if suffix in {'.csv', '.tsv'}:
         return _read_csv(raw, path.name, warnings), 'SCHEMA_ONLY'
     if suffix == '.xlsx':
         return _read_xlsx(raw, path.name, warnings), 'SCHEMA_ONLY'
@@ -311,7 +338,15 @@ def create_intake(*, case_id: str, business_question: str,
         if len(raw) != size:
             raise AttachmentError('Attachment changed while reading')
         warnings: list[str] = []
-        extracted, mode = _extract(raw, path, warnings)
+        if item.purpose == 'DATA_DICTIONARY':
+            from .tabular_files import dictionary_text
+            extracted, table = dictionary_text(raw,path.name,item.sheet,item.header_row)
+            if len(extracted)>MAX_SOURCE_CHARS:
+                raise AttachmentError('字段说明超过文字限制，请拆成较小的说明表；不会截断解释后继续。')
+            if table['other_sheets']: warnings.append('DICTIONARY_OTHER_SHEETS_NOT_SELECTED')
+            mode='TEXT_EXCERPT'
+        else:
+            extracted, mode = _extract(raw, path, warnings)
         if total_source + len(extracted) > MAX_TOTAL_SOURCE_CHARS:
             raise AttachmentError('Combined LLM document context exceeds safe text budget')
         total_source += len(extracted)
@@ -319,7 +354,7 @@ def create_intake(*, case_id: str, business_question: str,
         label = (item.label or path.name)[:200]
         sources.append(SourceDocument(source_id=source_id, kind=item.kind, label=label, text=extracted))
         records.append(AttachmentRecordV07(source_id=source_id,
-                                           display_name=path.name[:200], source_kind=item.kind,
+                                           display_name=(item.label or path.name)[:200], source_kind=item.kind,
                                            file_sha256=sha256(raw).hexdigest(), extracted_sha256=sha256(extracted.encode('utf-8')).hexdigest(), bytes=size,
                                            suffix=path.suffix.lower(), mode=mode,
                                            warnings=warnings, extracted_chars=len(extracted)))

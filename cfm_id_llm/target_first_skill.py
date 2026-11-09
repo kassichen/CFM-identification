@@ -20,10 +20,11 @@ EXTRA_STATE_RULES = dict(previous.EXTRA_STATE_RULES,
 BIND_POPULATION_INFORMATION = False
 RESOURCE = 'resources/causal_business_reading/SKILL.md'
 REVIEWED_INTENT_HANDOFF = True
-RULE = Field('conditioning_context', '本问明确限定的处理前背景，保留变量、取值或符号条件及其时点；共同研究说明适用于本问时，保留并引用该说明。',
+RULE = Field('conditioning_context', '用户明确要求在某个处理前背景条件下评价的目标；保留条件、取值或符号及其时点。共同条件明确限定各问时，逐问保留原文来源。',
     '不是普通场景说明、评价名单、政策使用名单或科学许可。跨背景平均写standardization_distribution。'
     '局部比较中共同的本人或同伴处理条件保留在first_arrangement与second_arrangement；不要转写成背景变量。'
-    '明确固定的网络、特征或符号背景无需另给数值。原文未指定背景用UNKNOWN；明确尚未决定用MISSING及原因和引用。不创造背景取值。',section='semantics')
+    '网络在处理前固定、已收集特征、同一研究时期属于研究结构或资料说明，本身不指定条件目标；网络归common.unit_network，时期归time_horizon，不能仅据这些事实填写本字段。'
+    '若原文明示以某个给定网络G或特征X=x为条件求结果，则保留该真实条件，符号不必另给数值。原文未指定目标背景用UNKNOWN；明确尚未决定用MISSING及原因和引用。不创造背景取值。',section='semantics')
 PEER = Field('neighbor_exposure', '本问明确指定或要求平均的同伴处理状态。',
     '不是计算同伴状态的暴露定义。完整政策已经指定各对象安排时，不再次生成同伴状态，用UNKNOWN。'
     '局部问题保留本题同伴条件，引用问句；确实用到状态定义时同时引用定义。',section='semantics')

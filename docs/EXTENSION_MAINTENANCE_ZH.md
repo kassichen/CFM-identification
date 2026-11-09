@@ -11,7 +11,7 @@
 | 事实读取组件登记 | `cfm_id_llm.fact_reading_contracts` | 八类 short_refs：政策均值、两政策差值、随机化局部效应、R3 观察性政策、变量 DAG、单个随机化臂均值、有限政策混合、观察性效应；配对请求、解析、来源、诊断、条件交接与重读 |
 | 推荐配置 | `cfm_id/configuration/reading.json` | 新应用只用这一处；复用已有协议，不声称首读最优 |
 | 兼容默认 | `ReadingConfig()`、`examples/legacy/configs/compatibility_default.json` | 不改变旧请求和旧检查点，不作为学生起点 |
-| 历史实验 | 旧协议说明（历史记录不随发布） | 用于显式复现；不能按版本号大小决定采用 |
+| 历史实验 | 显式旧配置（参见[配置指南](BUSINESS_READING_CONFIG_ZH.md)；历史实验记录不随个人仓库发布） | 用于显式复现；不能按版本号大小决定采用 |
 | 旧显式入口 | `business_entry`、`intent_submission`、内部 `workflows.legacy_network` | 保留兼容；新运行代码不得依赖参考答案 |
 
 共同登记只收拢组件拥有者，不代替各家族的业务和科学审核。旧 hash 来源 DAG 仍是兼容适配分支。逐问背景、固定条件和标准化目标的合同见 [目标条件职责](TARGET_CONDITIONING_OWNERSHIP_ZH.md)；未接入的明确条件目标继续阻断。
@@ -38,6 +38,7 @@ R3观察性完整政策的记录适配位于`observational_diagnostics`：完整
 | 历史普通 JSON 摘要 | `cfm_id.serialization.canonical_hash` | 仅保持旧网络协议字节兼容；包括旧 JSON 的非有限值行为，不能冒充严格新合同 |
 | 字段语义、引用责任、请求/解析配对 | `business_field_contract`、`source_coverage_contract`、`network_fact_protocols` | 不根据题号补值、按答案回填引用或自动批准 |
 | 信息字段组合 | `information_field_rules`（政策读取）、`effect_information_rules`（局部效应读取） | 同一公开规则用于 Schema、解析和复查诊断；字段相容不等于来源语义正确，不能自动改写模型回答 |
+| 均值顺序字段及重复定义 | `mean_order_field_contract`，由读取、Schema 与诊断共用 | 结果定义和编码不能跨字段变义；明确拟采用的关系、尚未决定和不采用分别表达，科学批准仍独立；额外约束不能被自动删除 |
 | 局部效应的信息与剩余主张职责 | `network_effect_reading.RESIDUAL_ROLES`，共享到 Schema 描述与请求元数据 | 按主张保留未表达内容及来源；只是公开读取说明，不能当语义验证器或自动删除约束的许可 |
 
 本次不合并不同摘要算法。即使常见输入摘要相同，允许的输入类型、非有限值规则和历史协议也可能不同。新增通用工具优先使用既有明确合同；确需新合同，应说明输入类型、错误行为、绑定用途和兼容策略。
@@ -85,7 +86,7 @@ R3观察性完整政策的记录适配位于`observational_diagnostics`：完整
 
 修改某个字段含义，应让首次 Schema、公开复查帮助（含 value/refs 嵌套路径）和逐字段审核消费同一定义，不能在三个位置各追加不同提示。`local_population_contract` 是本轮对齐示例；旧 profile 的历史请求必须逐字可恢复。事实配对需要声明 FACT_VERSION，并核对真实分派、解析、重读和安装入口。
 
-公开说明改变不等于审核放宽：所有原文明示限定仍须保留，实际引用须支持所属字段，完整变更须重新审核。无形中借 goal 补 target_population、借名册补样本范围、借编码定义补目标选择，都不能通过。新 profile 只有通过冻结的新题重复验收后才考虑提升默认，不能按编号大小决定推荐项。见本轮有限轮次验收（历史记录不随发布）。
+公开说明改变不等于审核放宽：所有原文明示限定仍须保留，实际引用须支持所属字段，完整变更须重新审核。无形中借 goal 补 target_population、借名册补样本范围、借编码定义补目标选择，都不能通过。新 profile 只有通过冻结的新题重复验收后才考虑提升默认，不能按编号大小决定推荐项。当前公开验收见[发布记录](RELEASE_ACCEPTANCE_ZH.md)，各轮原始实验另行保留。
 
 ## 读取调试的预算与停止边界
 
