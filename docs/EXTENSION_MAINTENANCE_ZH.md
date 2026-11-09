@@ -100,4 +100,4 @@ R3观察性完整政策的记录适配位于`observational_diagnostics`：完整
 
 ## Task 1（网络拓展 / POINT 拓展）
 
-四项功能（不等概率固定名额 D7、重随机化 D8、加权暴露、分组暴露）与四类目标按「新数学方法 / 已有能力接入」义务交付：数学合同见 [Task 1 数学合同](TASK1_POINT_EXTENSION_MATH_ZH.md)，缺项/限制见 [缺项限制表](TASK1_LIMITATIONS_ZH.md)，组合表由 `examples/generate_task1_combination_lookup.py` 可复现生成，业务案例见 `examples/task1_business_case_reference.py`。实际完成、明确缺项（L1–L6）、可复现方法、未解决项均列于缺项限制表；加权/分组暴露未进证书后端、生产政策值后端 R1B/R2 未接入新设计，不得当作已接入能力登记。
+四项功能（不等概率固定名额 D7、重随机化 D8、加权暴露、分组暴露）与四类目标按「新数学方法 / 已有能力接入」义务交付：数学合同见 [Task 1 数学合同](TASK1_POINT_EXTENSION_MATH_ZH.md)，缺项/限制见 [缺项限制表](TASK1_LIMITATIONS_ZH.md)，组合表由 `examples/generate_task1_combination_lookup.py` 可复现生成，业务案例见 `examples/task1_business_case_reference.py`（D7/D8 × E1）与 `examples/task1_weighted_grouped_business_case.py`（W/G 暴露）。实际完成状态（已完成/部分完成/未完成）逐项列于缺项限制表；加权/分组暴露已完成正式流程接入（单臂/批量/组合证书 + 效应派单 + 扩展 R1A 路由），政策均值/两政策差值 R1B 与 R2（签名充分性）均已完成新设计接入。未完成项见该表 U1–U6，不得把 N>8 精确支持、PFN 估计、R2 的 W/G 签名或 D4–D6 的独立分配质量当作已完成能力登记。

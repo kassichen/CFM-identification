@@ -72,4 +72,4 @@
 
 ## Task 1（网络拓展 / POINT 拓展）
 
-四项新功能（① 不等概率固定名额 D7、② 按平衡规则重随机化 D8、③ 固定权重暴露、④ 分组暴露）与四类目标（`local_direct_mean` / `peer_spillover_mean` / `policy_mean` / `policy_contrast`）的数学实现、组合查找表、证明与业务案例，见 [Task 1 数学合同](TASK1_POINT_EXTENSION_MATH_ZH.md) 与 [缺项限制表](TASK1_LIMITATIONS_ZH.md)。实际完成、明确缺项（L1–L6）、可复现方法、未解决项均列于缺项限制表；加权/分组暴露未进证书后端、生产政策值后端（R1B/R2）未接入新设计属明确缺项，见该表 L1/L2。
+四项新功能（① 不等概率固定名额 D7、② 按平衡规则重随机化 D8、③ 固定权重暴露、④ 分组暴露）与四类目标（`local_direct_mean` / `peer_spillover_mean` / `policy_mean` / `policy_contrast`）的数学实现、组合查找表、证明与业务案例，见 [Task 1 数学合同](TASK1_POINT_EXTENSION_MATH_ZH.md) 与 [缺项限制表](TASK1_LIMITATIONS_ZH.md)。实际完成状态（已完成/部分完成/未完成）逐项列于缺项限制表；加权/分组暴露已完成正式流程接入（单臂/批量/组合证书 + 效应派单 + 扩展 R1A 路由，D1–D8），政策均值/两政策差值 R1B 与 R2（签名充分性）均已完成新设计接入。未完成项：N>8 解析支持、PFN 估计、R2 的 W/G 签名、D4–D6 上 W/G 的独立分配质量（部分完成）、默认优先 R2，见该表 U1–U6。

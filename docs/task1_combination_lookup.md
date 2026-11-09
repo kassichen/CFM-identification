@@ -38,38 +38,48 @@
 | **D7** | a=0:{0}; a=1:{0} | a=0:{1}; a=1:{1} | a=0:{0}; a=1:{0,1} | a=0:{1}; a=1:{1} | a=0:{1}; a=1:{1} | a=0:{2}; a=1:{1,2} | a=0:{(0,1)}; a=1:{(0,1),(1,0)} |
 | **D8** | a=0:{0,1}; a=1:{0} | a=0:{1,2}; a=1:{0,1} | a=0:{1}; a=1:{0} | a=0:{1,2}; a=1:{0,1} | a=0:{1}; a=1:{0,1} | a=0:{1,3}; a=1:{0,2} | a=0:{(1,0),(1,1)}; a=1:{(0,0),(0,1)} |
 
-## 表 2 · 四类目标接入矩阵
+## 表 2 · 四类目标接入矩阵（节点 a，按原设计平均）
 
-`local_direct_mean(s=0)` 与 `peer_spillover_mean(own=0, 1→0)` 逐 (设计 × 暴露) 记录；
-`POINT` 给出符号值，`UNSUP` 记录阻断原因（正支持缺失 / 假设未确认）。
+**条件与结论分开**：以下数值是**按原设计平均的效应**（design-standardized），只需
+`random_assignment` + `consistency` + 目标 arm 正支持；**不**以暴露充分性为前提。
+若另**额外采用暴露充分性**，同一数值可升级为「暴露的因果效应」解释
+（`causal_effect_under_exposure_sufficiency`），但那是更强的解释层，不改变本表数值，
+也不是本表成立的条件。未单独标注时本表即 `design_standardized_contrast`。
 
-### 2a · local_direct_mean(s=0)
+坐标按暴露类型取**合法状态**：E1–E5 为整数；W 为精确有理加权值；G 为**成组计数元组**
+（如 `(1,0)`、`(0,1)`），**不**统一用单个 0/1。`POINT` 给出该坐标下的符号值，
+`UNSUP` 记录正支持缺失或条件未确认。
 
-| 设计 \ 暴露 | E1 | E2 | E3 | E4 | E5 | W | G |
-|---|---|---|---|---|---|---|---|
-| **D1** | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | UNSUP (zero support) |
-| **D2** | POINT (4) | UNSUP (zero support) | POINT (4) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D3** | POINT (4) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D4** | POINT (4) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D5** | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D6** | POINT (4) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D7** | POINT (4) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D8** | POINT (4) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-
-### 2b · peer_spillover_mean(own=0, 1→0)
+### 2a · local_direct_mean（固定一个合法 s 坐标，比较 a=1 减 a=0）
 
 | 设计 \ 暴露 | E1 | E2 | E3 | E4 | E5 | W | G |
 |---|---|---|---|---|---|---|---|
-| **D1** | POINT (1) | POINT (1) | POINT (1) | POINT (1) | POINT (1) | UNSUP (zero support) | UNSUP (zero support) |
-| **D2** | POINT (1) | UNSUP (zero support) | POINT (1) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D3** | POINT (1) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D4** | UNSUP (zero support) | POINT (1) | UNSUP (zero support) | POINT (1) | POINT (1) | UNSUP (zero support) | UNSUP (zero support) |
-| **D5** | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D6** | POINT (1) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D7** | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
-| **D8** | POINT (1) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) | UNSUP (zero support) |
+| **D1** | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) |
+| **D2** | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) |
+| **D3** | POINT (4) | POINT (4) | UNSUP (no common (a=0,a=1) coordinate at node a) | POINT (4) | POINT (4) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) |
+| **D4** | POINT (4) | POINT (4) | UNSUP (no common (a=0,a=1) coordinate at node a) | POINT (4) | POINT (4) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) |
+| **D5** | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) |
+| **D6** | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) |
+| **D7** | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) | POINT (4) |
+| **D8** | POINT (4) | POINT (4) | UNSUP (no common (a=0,a=1) coordinate at node a) | POINT (4) | POINT (4) | UNSUP (no common (a=0,a=1) coordinate at node a) | UNSUP (no common (a=0,a=1) coordinate at node a) |
+
+### 2b · peer_spillover_mean（own=0，比较高坐标减低坐标）
+
+| 设计 \ 暴露 | E1 | E2 | E3 | E4 | E5 | W | G |
+|---|---|---|---|---|---|---|---|
+| **D1** | POINT (1) | POINT (2) | POINT (1) | POINT (2) | POINT (1) | POINT (3) | POINT (2) |
+| **D2** | POINT (1) | POINT (1) | POINT (1) | POINT (1) | UNSUP (<2 peer coordinates at node a) | POINT (2) | POINT (1) |
+| **D3** | POINT (1) | POINT (1) | UNSUP (<2 peer coordinates at node a) | POINT (1) | UNSUP (<2 peer coordinates at node a) | POINT (2) | POINT (1) |
+| **D4** | UNSUP (<2 peer coordinates at node a) | POINT (1) | UNSUP (<2 peer coordinates at node a) | POINT (1) | POINT (1) | POINT (2) | POINT (1) |
+| **D5** | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) |
+| **D6** | POINT (1) | POINT (1) | POINT (1) | POINT (1) | UNSUP (<2 peer coordinates at node a) | POINT (2) | POINT (1) |
+| **D7** | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) | UNSUP (<2 peer coordinates at node a) |
+| **D8** | POINT (1) | POINT (1) | UNSUP (<2 peer coordinates at node a) | POINT (1) | UNSUP (<2 peer coordinates at node a) | POINT (2) | POINT (1) |
 
 ### 2c · policy_mean 与 policy_contrast（仅设计维度）
+
+政策值/两政策差值同样是**按原设计（完整分配律）平均**的 `design_standardized_policy_value`，
+不涉及暴露映射或暴露充分性。
 
 | 设计 | policy_mean (E[2|A|]) | policy_contrast (vs D2) |
 |---|---|---|

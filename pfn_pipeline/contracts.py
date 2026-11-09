@@ -173,7 +173,7 @@ class TaskSpec:
         if not np.array_equal(adjacency, adjacency.T) or np.any(np.diag(adjacency)):
             raise ValueError("adjacency must be symmetric and have no self-loops")
         object.__setattr__(self, "adjacency", adjacency)
-        _choice(self.exposure_definition, ("strict_majority", "treated_neighbor_count_1hop", "three_level_treated_neighbor_fraction", "pretreatment_core_collaborator_majority", "exact_treated_neighbor_count", "any_treated_neighbor"),
+        _choice(self.exposure_definition, ("strict_majority", "treated_neighbor_count_1hop", "three_level_treated_neighbor_fraction", "pretreatment_core_collaborator_majority", "exact_treated_neighbor_count", "any_treated_neighbor", "weighted_exposure_sum", "weighted_exposure_proportion", "grouped_exposure"),
                 "exposure_definition")
         _choice(self.outcome_kind, ("continuous", "binary"), "outcome_kind")
         _choice(self.budget_mode, ("exact", "at_most"), "budget_mode")
@@ -270,7 +270,7 @@ class TaskSpec:
                     "pretreatment_core_collaborator_majority": "pretreatment_core_collaborator_majority",
                     "exact_treated_neighbor_count": "exact_treated_neighbor_count",
                     "any_treated_neighbor": "any_treated_neighbor",
-                }.get(declared_grouping)
+                }.get(declared_grouping, declared_grouping)
                 if (not _same_payload(self.assignment_design, declared_assignment)
                     or public_exposure is None or self.exposure_definition != public_exposure
                     or self.target_fingerprint != query.get("response_target_fingerprint")

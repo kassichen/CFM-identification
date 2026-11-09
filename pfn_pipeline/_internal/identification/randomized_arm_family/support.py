@@ -13,8 +13,8 @@ from itertools import product
 from ..schemas import NetworkExposureSpec
 from .assignment import AssignmentSpec, NeighborCountLaw, neighbor_set
 from .exposure import ExposureSpec
-from .task1_assignment import MAX_EXACT_ENUMERATION_N
-from .task1_exposure import GroupedExposureSpec, WeightedExposureSpec
+from .assignment_extensions import MAX_EXACT_ENUMERATION_N
+from .exposure_extensions import GroupedExposureSpec, WeightedExposureSpec
 
 
 @dataclass(frozen=True)

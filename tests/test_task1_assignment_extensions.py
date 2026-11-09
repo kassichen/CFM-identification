@@ -1,7 +1,7 @@
 from fractions import Fraction
 import pytest
 
-from pfn_pipeline._internal.identification.randomized_arm_family.task1_assignment import (
+from pfn_pipeline._internal.identification.randomized_arm_family.assignment_extensions import (
     UnequalProbabilityFixedQuotaDesign,
     RerandomizedBalancedDesign,
 )

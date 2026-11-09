@@ -96,11 +96,12 @@ def make_complete_randomization_arm_task(
     m: int,
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: str = "strict_majority",
     core_collaborators=None,
+    exposure_weights=None, exposure_groups=None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -122,6 +123,7 @@ def make_complete_randomization_arm_task(
         source=source, evidence=evidence,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         admitted=admitted, query_authority=query_authority,
         synthetic=synthetic, outcome_kind=outcome_kind,
     )
@@ -145,11 +147,12 @@ def make_two_group_quota_arm_task(
     treated_quotas: tuple[int, int],
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: str = "strict_majority",
     core_collaborators=None,
+    exposure_weights=None, exposure_groups=None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -170,6 +173,7 @@ def make_two_group_quota_arm_task(
         exposure_value=exposure_value, source=source, evidence=evidence,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         admitted=admitted, query_authority=query_authority,
         synthetic=synthetic, outcome_kind=outcome_kind,
     )
@@ -194,11 +198,12 @@ def make_heterogeneous_bernoulli_arm_task(
     propensities,
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: str = "strict_majority",
     core_collaborators=None,
+    exposure_weights=None, exposure_groups=None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -226,6 +231,7 @@ def make_heterogeneous_bernoulli_arm_task(
         exposure_value=exposure_value, source=source, evidence=evidence,
         exposure_definition=exposure_definition, admitted=admitted,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         query_authority=query_authority, synthetic=synthetic,
         outcome_kind=outcome_kind,
     )
@@ -244,9 +250,9 @@ def make_heterogeneous_bernoulli_arm_task(
 
 def make_two_stage_quota_arm_task(
     network, *, groups, quota_profiles, profile_probabilities,
-    node_id:str,own_treatment_value:int,exposure_value:int,
+    node_id:str,own_treatment_value:int,exposure_value:int | str,
     source:str,evidence:str,exposure_definition:str='strict_majority',
-    core_collaborators=None,admitted:bool=False,
+    core_collaborators=None,exposure_weights=None,exposure_groups=None,admitted:bool=False,
     profile_exclusion_admitted:bool=False,query_authority:str='PROPOSED',
     synthetic:bool=False,outcome_kind:str='continuous',
 )->TaskSpec:
@@ -261,6 +267,7 @@ def make_two_stage_quota_arm_task(
         node_id=node_id,own_treatment_value=own_treatment_value,
         exposure_value=exposure_value,source=source,evidence=evidence,
         exposure_definition=exposure_definition,core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights,exposure_groups=exposure_groups,
         admitted=admitted,profile_exclusion_admitted=profile_exclusion_admitted,
         query_authority=query_authority,synthetic=synthetic,outcome_kind=outcome_kind)
     design=spec.randomized_network_arm_theorem_contract.design
@@ -275,8 +282,8 @@ def make_two_stage_quota_arm_task(
 
 def make_multi_group_quota_arm_task(
     network, *, groups, treated_quotas, node_id:str,own_treatment_value:int,
-    exposure_value:int,source:str,evidence:str,exposure_definition:str='strict_majority',
-    core_collaborators=None,admitted:bool=False,query_authority:str='PROPOSED',
+    exposure_value:int | str,source:str,evidence:str,exposure_definition:str='strict_majority',
+    core_collaborators=None,exposure_weights=None,exposure_groups=None,admitted:bool=False,query_authority:str='PROPOSED',
     synthetic:bool=False,outcome_kind:str='continuous',
 )->TaskSpec:
     """D5: independent complete randomization within 3..64 fixed strata."""
@@ -288,7 +295,8 @@ def make_multi_group_quota_arm_task(
         treated_quotas=tuple(treated_quotas),node_id=node_id,
         own_treatment_value=own_treatment_value,exposure_value=exposure_value,
         source=source,evidence=evidence,exposure_definition=exposure_definition,
-        core_collaborators=core_collaborators,admitted=admitted,
+        core_collaborators=core_collaborators,exposure_weights=exposure_weights,
+        exposure_groups=exposure_groups,admitted=admitted,
         query_authority=query_authority,synthetic=synthetic,outcome_kind=outcome_kind)
     design=spec.randomized_network_arm_theorem_contract.design
     return _build_arm_task(network,spec,assignment_design={
@@ -301,8 +309,9 @@ def make_multi_group_quota_arm_task(
 
 def make_cluster_bernoulli_arm_task(
     network, *, clusters, cluster_probabilities, node_id: str,
-    own_treatment_value: int, exposure_value: int, source: str, evidence: str,
+    own_treatment_value: int, exposure_value: int | str, source: str, evidence: str,
     exposure_definition: str = 'strict_majority', core_collaborators=None,
+    exposure_weights=None, exposure_groups=None,
     admitted: bool = False, query_authority: str = 'PROPOSED',
     synthetic: bool = False, outcome_kind: str = 'continuous',
 ) -> TaskSpec:
@@ -316,6 +325,7 @@ def make_cluster_bernoulli_arm_task(
         node_id=node_id, own_treatment_value=own_treatment_value,
         exposure_value=exposure_value, source=source, evidence=evidence,
         exposure_definition=exposure_definition, core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         admitted=admitted, query_authority=query_authority, synthetic=synthetic,
         outcome_kind=outcome_kind)
     design = spec.randomized_network_arm_theorem_contract.design
@@ -330,10 +340,11 @@ def make_cluster_bernoulli_arm_task(
 
 def make_unequal_probability_fixed_quota_arm_task(
     network, *, design,
-    node_id: str, own_treatment_value: int, exposure_value: int,
+    node_id: str, own_treatment_value: int, exposure_value: int | str,
     source: str, evidence: str,
     exposure_definition: str = "strict_majority",
-    core_collaborators=None, admitted: bool = False,
+    core_collaborators=None, exposure_weights=None, exposure_groups=None,
+    admitted: bool = False,
     query_authority: str = "PROPOSED", synthetic: bool = False,
     outcome_kind: str = "continuous",
 ) -> TaskSpec:
@@ -354,6 +365,7 @@ def make_unequal_probability_fixed_quota_arm_task(
         source=source, evidence=evidence,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         admitted=admitted, query_authority=query_authority,
         synthetic=synthetic, outcome_kind=outcome_kind,
     )
@@ -375,10 +387,11 @@ def make_unequal_probability_fixed_quota_arm_task(
 
 def make_rerandomized_balanced_arm_task(
     network, *, design,
-    node_id: str, own_treatment_value: int, exposure_value: int,
+    node_id: str, own_treatment_value: int, exposure_value: int | str,
     source: str, evidence: str,
     exposure_definition: str = "strict_majority",
-    core_collaborators=None, admitted: bool = False,
+    core_collaborators=None, exposure_weights=None, exposure_groups=None,
+    admitted: bool = False,
     query_authority: str = "PROPOSED", synthetic: bool = False,
     outcome_kind: str = "continuous",
 ) -> TaskSpec:
@@ -400,6 +413,7 @@ def make_rerandomized_balanced_arm_task(
         source=source, evidence=evidence,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         admitted=admitted, query_authority=query_authority,
         synthetic=synthetic, outcome_kind=outcome_kind,
     )
@@ -420,7 +434,8 @@ def make_rerandomized_balanced_arm_task(
 def _exposure_label(exposure_definition: str) -> str:
     return {"strict_majority": "E1", "three_level_treated_neighbor_fraction": "E2",
             "pretreatment_core_collaborator_majority": "E3",
-            "exact_treated_neighbor_count": "E4", "any_treated_neighbor": "E5"}[exposure_definition]
+            "exact_treated_neighbor_count": "E4", "any_treated_neighbor": "E5"}.get(
+                exposure_definition, exposure_definition)
 
 
 def _build_arm_task(network, spec, *, assignment_design, name, setting, source, evidence) -> TaskSpec:
@@ -452,7 +467,8 @@ def _build_arm_task(network, spec, *, assignment_design, name, setting, source, 
             "pretreatment_core_collaborator_majority": "pretreatment_core_collaborator_majority",
             "exact_treated_neighbor_count": "exact_treated_neighbor_count",
             "any_treated_neighbor": "any_treated_neighbor",
-        }[spec.randomized_network_arm_theorem_contract.grouping],
+        }.get(spec.randomized_network_arm_theorem_contract.grouping,
+              spec.randomized_network_arm_theorem_contract.grouping),
         outcome_kind=spec.domain(spec.query.outcome).kind,
         identification_spec=spec.model_dump(mode="python"),
         target_fingerprint=spec.query.response_target_fingerprint,

@@ -150,6 +150,9 @@ class CovariateBalanceRule:
             if not str(name).strip() or not values:
                 raise ValueError("balance covariates must have nonempty names and values")
             normalized[str(name)] = {str(n): _as_fraction(v) for n, v in values.items()}
+        node_sets = {frozenset(values) for values in normalized.values()}
+        if len(node_sets) != 1:
+            raise ValueError("every balance covariate must cover precisely the same node set")
         object.__setattr__(self, "covariates", normalized)
         object.__setattr__(self, "tolerance", tol)
 
@@ -182,6 +185,14 @@ class RerandomizedBalancedDesign:
     def __post_init__(self):
         if not callable(self.balance_rule):
             raise TypeError("balance_rule must be callable")
+        if isinstance(self.balance_rule, CovariateBalanceRule):
+            rule_nodes = set(next(iter(self.balance_rule.covariates.values())))
+            base_nodes = set(self.base_design.nodes)
+            if rule_nodes != base_nodes:
+                raise ValueError(
+                    "balance covariates must match the study nodes exactly; "
+                    f"extra={sorted(rule_nodes - base_nodes)!r}, "
+                    f"missing={sorted(base_nodes - rule_nodes)!r}")
         accepted = [a for a in self.base_design.enumerate_assignments()
                     if self.is_balanced(a)]
         normalizer = sum((self.base_design.assignment_probability(a)

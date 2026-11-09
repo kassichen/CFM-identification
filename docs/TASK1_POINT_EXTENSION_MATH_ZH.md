@@ -6,7 +6,7 @@
 
 - 固定节点 `V`（`N=|V|`），处理前已知简单无向网络 `G`，`N(i)` 为一跳邻居，`d_i=|N(i)|`。
 - 处理向量 `T=(T_1,...,T_N)\in\{0,1\}^N`，`q(t\mid w)=P(T=t\mid W=w)` 为已知的完整分配律（不依据结果数据推断）。
-- 暴露映射 `S_i(t)=g_i(t)` 将完整处理向量映射到节点的暴露状态。设计标准化 arm 均值 `\mu_i^q(a,s\mid w)` 本身是暴露格上的条件均值，其 POINT 识别不依赖 exposure sufficiency；但把 `\mu_i(1,s)-\mu_i(0,s)` 解释为「直接效应」等因果对比时，是否需额外接受 exposure sufficiency 是独立的科学判断，本实现的 target gate 对直接/溢出效应目标保守地要求调用方显式确认（见 §6），不能由暴露定义自动推出。
+- 暴露映射 `S_i(t)=g_i(t)` 将完整处理向量映射到节点的暴露状态。设计标准化 arm 均值 `\mu_i^q(a,s\mid w)` 是暴露格上的条件均值，其 POINT 识别只需原设计律 + `full_vector_randomization` + `consistency` + 目标 arm 正支持，**不**依赖 exposure sufficiency。把 `\mu_i(1,s)-\mu_i(0,s)` 解释为「暴露的因果效应」是**额外**采用 exposure sufficiency 后的更强解释；核对工具以 `interpretation` 字段区分 `design_standardized_contrast` 与 `causal_effect_under_exposure_sufficiency`。未采用充分性不拒绝该设计标准化对比——**不能把充分的解释层当作结论成立的前提，也不能用它混同「按原设计平均」与「暴露充分性效应」**。
 - 潜在结果 `Y_i(t)`；观测 `Y_i^{obs}=Y_i(T)`（consistency）。假设 full-vector randomization `T\perp\{Y_i(t):i,t\}\mid W`、固定处理前图、以及相关条件一阶矩有限。
 
 ## 2. 一般 POINT 识别（Aronow–Samii 2017）
@@ -81,7 +81,7 @@ S_i(t)=\Big(\sum_{j\in G_1}t_j,\ \dots,\ \sum_{j\in G_K}t_j\Big),
 
 **穷举路径（新设计 ① ② 与 加权/分组暴露）**：新设计无解析计数律，采用精确 `2^N` 全排列枚举，`N\le 8`；逐 `t` 累加 `q(t)` 到 `(t_i,S_i(t))`，再校验 `\sum\pi_i=1`。超出 `N\le 8` 只能报告不可处理，不猜测支持。
 
-**独立 oracle**：`randomized_arm_family/task1_verifier.py` 用自己的 `2^N` 循环独立复算联合支持，**不调用** `SupportEngine`，在小图上与 proposer 对拍。这满足「证明重放 = 验证器检查数学证书与目标绑定」，而非复用同一代码路径。
+**独立 oracle**：`randomized_arm_family/support_verifier.py` 用自己的 `2^N` 循环独立复算联合支持，**不调用** `SupportEngine`、也不调用求解器的 `assignment_probability`/`statistic`/`classify`/平衡公式，在小图上与 proposer 对拍。这满足「证明重放 = 验证器检查数学证书与目标绑定」，而非复用同一计算函数。
 
 ## 5. 四类目标
 
@@ -98,17 +98,18 @@ S_i(t)=\Big(\sum_{j\in G_1}t_j,\ \dots,\ \sum_{j\in G_K}t_j\Big),
 
 ## 6. A4/A5/A6 门禁（fail-closed）
 
-- **A5**：`known_assignment_law`、`full_vector_randomization`、`consistency`、`fixed_pretreatment_network`、`finite_conditional_first_moments` 均须确认；`local_direct_mean`/`peer_spillover_mean` 另需 `exposure_sufficiency`（或明确不要求）。缺少 → `UNSUPPORTED`（unconfirmed assumptions）；明确拒绝 → `UNSUPPORTED`（rejected assumptions）。
+- **A5**：`known_assignment_law`、`full_vector_randomization`、`consistency`、`fixed_pretreatment_network`、`finite_conditional_first_moments` 均须确认。`exposure_sufficiency` **不是**设计标准化 arm 均值的形式识别条件；若另行采用它，只是把对比升级为「暴露的因果效应」解释，不能当作形式识别已完成的前提或结论。缺少/明确拒绝 A5 条件 → `UNSUPPORTED`。
 - **A4**：目标单元格的总体条件均值必须由声明信息独立提供；有限样本不代替总体算子。
 - **A6**：不等概率律概率和须为 1、重随机化平衡事件须正概率、权重须非负、分组须不相交、查询 arm 须正支持；不满足即 `UNSUPPORTED`，不得回退为 PARTIAL 猜测。
 
 ## 7. 正式代码与可复现证据
 
-- 公共 wire 设计 `UnequalProbabilityFixedQuotaDesignV1`、`RerandomizedBalancedDesignV1`、`CovariateBalanceRuleV1`；内部精确层 `randomized_arm_family/`（`task1_assignment.py`、`task1_exposure.py`、`task1_targets.py`、`task1_verifier.py`）。
+- 公共 wire 设计 `UnequalProbabilityFixedQuotaDesignV1`、`RerandomizedBalancedDesignV1`、`CovariateBalanceRuleV1`；内部精确层 `randomized_arm_family/`（`assignment_extensions.py`、`exposure_extensions.py`、`support_verifier.py`）。
 - 任务接口 `cfm_id/network_design_adapter.py`（`task1_design`、`make_arm` 路由）与读取层 `cfm_id_llm/network_design_reading.py`、`network_policy_reading.py`。
-- 新设计接入证书后端：`randomized_network_arm.py`（单臂）、`identification_batch.py`（批量）、`identification_composition.py`（效应组合），走精确枚举 + 独立 oracle。
+- 正式识别与证书：`identification.py`（`make_*_arm_task` + `identify`）、`randomized_network_arm.py`（单臂）、`identification_batch.py`（批量，含 `_compute_wg`）、`identification_composition.py`（效应组合，含 W/G 坐标解析）、`identification_policy_r1b.py`（固定政策值/两政策差值）、`identification_policy_r2.py`（均值签名充分性政策值与两政策端点，D7/D8 走精确枚举 + 独立 oracle）；W/G 走单臂/批量/组合与业务派单（合同 `exposure_weights`/`exposure_groups` 字段，见 §3）。
 - 组合查找表 `docs/task1_combination_lookup.md` 由 `examples/generate_task1_combination_lookup.py` 可复现生成；业务案例 `examples/task1_business_case_reference.py` 走完整派单链。
-- 测试：`tests/test_task1_assignment_extensions.py`、`test_task1_supportengine_integration.py`、`test_task1_targets.py`、`test_task1_backend_integration.py`、`test_task1_combination_lookup.py`、`test_task1_business_case.py` 含小图 `2^N` 穷举对拍、正支持/零支持、四类目标手算 oracle 与证书篡改拒绝。
+- **核对工具（非识别）**：`tests/task1_target_helpers.py` 给定各安排结果再算四类目标期望，仅作手算对照/组合表，**不构成正式识别**；`rule.py` 现为**正式识别规则入口**（`rule.identify` 转发证书路径、`rule.replay` 证明重放），包 `__init__` 不再导出核对目标。
+- 测试：`tests/test_task1_*.py` 含小图 `2^N` 穷举对拍、正支持/零支持、四类目标手算核对、验证器独立性、W/G 证书与证书篡改拒绝；`tests_gateway/test_task1_weighted_grouped_business_case.py` 覆盖 W/G 业务派单。
 
 ## 8. 三条文献依据
 
@@ -116,8 +117,15 @@ S_i(t)=\Big(\sum_{j\in G_1}t_j,\ \dots,\ \sum_{j\in G_K}t_j\Big),
 - **Hájek, J. (1964).** *Asymptotic Theory of Rejective Sampling with Varying Probabilities from a Finite Population.* The Annals of Mathematical Statistics 35(4), 1491–1523. doi:10.1214/aoms/1177700375 —— rejective sampling 的 `q_B(A)=q(A)1\{B\}/P_q(B)` 精确形式。
 - **Aronow, P. M., & Samii, C. (2017).** *Estimating Average Causal Effects Under General Interference, with Application to a Social Network Experiment.* The Annals of Applied Statistics 11(4), 1912–1947. doi:10.1214/16-AOAS1005 —— 一般暴露映射下 `\pi_i(t,s)=\sum_{u\in U_{i,t,s}}q(u)` 与 POINT 识别的框架，对应 ③ ④ 暴露与四类目标。
 
-## 9. 明确未支持
+文献卡与"依据→推导→实现→测试"映射见 `literature_support/catalog.json`（`aronow_samii2017_interference`、`morgan_rubin2012_rerandomization`、`hajek1964_rejective_sampling`）与 `literature_support/routes/task1_network_point_extension.json`；文献只提供概念依据，项目推导与证书独立（未把任何原论文逐字作为本项目定理）。
 
-加权/分组暴露（W/G）的证书后端、生产政策值后端（R1B/R2）对新设计的接入、`N>8` 的解析推广、任意 stochastic policy kernel、动态/未知图、多值或连续处理、数值 PFN Estimation，均**未被本合同证明或实现**；详见缺项/限制表。新设计精确支持依赖 `N\le 8` 全排列枚举，超出仅报告不可处理。
+## 9. 识别范围与明确未支持
+
+按当前代码与本合同一致：
+
+- **识别什么**：设计标准化条件 arm 均值 `\mu_i^q(a,s)=E[Y_i^{obs}\mid T_i=a,S_i=s]`（`\pi_i(a,s)>0`）；直接/溢出效应为 arm mean 对比；政策值与两政策差值在已知完整分配律下（R1B），或显式采用均值签名充分性时经 R2。
+- **需要哪些条件**：`known_assignment_law`、`full_vector_randomization`、`consistency`、`fixed_pretreatment_network`、`finite_conditional_first_moments`、目标 arm 正支持；新设计精确支持依赖 `N\le 8` 全排列枚举。`exposure_sufficiency` **不是**设计标准化对比的条件（见 §1、§6）。
+- **已完成**：① 不等概率固定名额、② 重随机化、③ 加权暴露、④ 分组暴露，均接入正式流程——单臂证书（`rule.identify`）、批量 `identification_batch`（W/G 按节点可达状态并集，非矩形，不可达格 pad UNSUPPORTED）、组合 `identification_composition`（W/G 坐标解析 + 独立 oracle）、效应业务派单、扩展 R1A 路由（D1–D8）；新设计的政策均值/两政策差值走 R1B（固定政策值，含有限政策混合）与 R2（均值签名充分性，含两政策端点）。
+- **未完成**：`N>8` 解析推广（U1）；数值 PFN Estimation（U2）；R2 的 W/G 签名（U3，W/G 走 R1B/效应路线）；D4–D6 上 W/G 的独立分配质量（U4，部分完成：质量仍为全律镜像、暴露统计量独立）；默认优先 R2（U5）；任意 stochastic policy kernel、动态/未知图、多值或连续处理、R3 观测条件分解（U6）。详见缺项/限制表。
 
 本文件是受限的识别结果数学合同，不是关于真实业务假设成立、实证随机化协议可靠或具体效应大小的声明。

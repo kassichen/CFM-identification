@@ -2,10 +2,10 @@ from fractions import Fraction
 from pfn_pipeline._internal.identification.schemas import (
     NetworkExposureSpec, CompleteRandomizationDesignV1, HeterogeneousBernoulliDesignV1)
 from pfn_pipeline._internal.identification.randomized_arm_family.assignment import AssignmentSpec
-from pfn_pipeline._internal.identification.randomized_arm_family.task1_exposure import (
+from pfn_pipeline._internal.identification.randomized_arm_family.exposure_extensions import (
     WeightedExposureSpec, GroupedExposureSpec)
 from pfn_pipeline._internal.identification.randomized_arm_family.support import SupportEngine
-from pfn_pipeline._internal.identification.randomized_arm_family.task1_verifier import verify_joint_support
+from pfn_pipeline._internal.identification.randomized_arm_family.support_verifier import verify_joint_support
 
 
 def network():

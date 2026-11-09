@@ -41,16 +41,17 @@ from .randomized_arm_family import AssignmentSpec, ExposureSpec, SupportEngine, 
 from .randomized_arm_family.assignment import (
     complete_conditional_count_distribution,
     neighbor_set, group_neighbor_counts, group_conditional_count_distribution,
-    as_task1_dataclass,
+    as_design_dataclass,
 )
 from .randomized_arm_family.exposure import GROUP_E1, GROUP_E2, GROUP_E3, GROUP_E4, GROUP_E5
 from .randomized_arm_family.cluster_verifier import verify_cluster_joint_support
 from .randomized_arm_family.two_stage_verifier import independent_joint_support as _verify_d6_joint_support
 from .randomized_arm_family.two_stage_a5 import profile_exclusion_reason
-from .randomized_arm_family.task1_assignment import (
+from .randomized_arm_family.assignment_extensions import (
     MAX_EXACT_ENUMERATION_N, UnequalProbabilityFixedQuotaDesign, RerandomizedBalancedDesign,
 )
-from .randomized_arm_family.task1_verifier import verify_joint_support as _verify_task1_joint_support
+from .randomized_arm_family.support_verifier import verify_joint_support as _verify_joint_support
+from .randomized_arm_family.exposure_extensions import WeightedExposureSpec, GroupedExposureSpec
 from .query_gate import TRUSTED_QUERY_AUTHORITIES, query_semantics_implementation_gaps
 from .schemas import (
     Assumption, AssumptionStatus, CompleteRandomizationDesignV1,
@@ -93,6 +94,60 @@ GROUP_TO_VARIABLE = {
     GROUP_E4: "exact_count_exposure",
     GROUP_E5: "any_neighbor_exposure",
 }
+
+EXPOSURE_WEIGHTED_SUM = "weighted_exposure_sum"
+EXPOSURE_WEIGHTED_PROPORTION = "weighted_exposure_proportion"
+EXPOSURE_GROUPED = "grouped_exposure"
+W_G_GROUPINGS = (EXPOSURE_WEIGHTED_SUM, EXPOSURE_WEIGHTED_PROPORTION, EXPOSURE_GROUPED)
+W_G_TO_PROGRAM = {
+    EXPOSURE_WEIGHTED_SUM: "S_i=sum_j w_ij T_j;fixed weighted sum",
+    EXPOSURE_WEIGHTED_PROPORTION: "S_i=sum_j w_ij T_j/sum_j w_ij;fixed weighted proportion",
+    EXPOSURE_GROUPED: "S_i=(K_i(G_1),...,K_i(G_K));fixed grouped counts",
+}
+
+
+def exposure_object(contract):
+    """Build the internal exposure object implied by the contract's grouping."""
+    if contract.grouping == EXPOSURE_WEIGHTED_SUM:
+        return WeightedExposureSpec(weights=dict(contract.exposure_weights), mode="sum")
+    if contract.grouping == EXPOSURE_WEIGHTED_PROPORTION:
+        return WeightedExposureSpec(weights=dict(contract.exposure_weights), mode="proportion")
+    if contract.grouping == EXPOSURE_GROUPED:
+        return GroupedExposureSpec(groups={k: list(v) for k, v in contract.exposure_groups.items()})
+    return ExposureSpec(contract.grouping, contract.core_collaborators)
+
+
+def queried_exposure_state(exposure, raw):
+    """Parse the serialized queried exposure state to its exact hashable value."""
+    if isinstance(exposure, WeightedExposureSpec):
+        return Fraction(raw)
+    if isinstance(exposure, GroupedExposureSpec):
+        import json
+        value = json.loads(raw) if isinstance(raw, str) else raw
+        return tuple(int(s) for s in value)
+    return raw
+
+
+def exposure_state_str(exposure, state):
+    """Canonical serialized form of an exposure state for the wire query/program."""
+    if isinstance(exposure, WeightedExposureSpec):
+        return str(Fraction(state))
+    if isinstance(exposure, GroupedExposureSpec):
+        import json
+        return json.dumps(list(state))
+    return int(state)
+
+
+GROUP_TO_VARIABLE.update({
+    EXPOSURE_WEIGHTED_SUM: "weighted_exposure",
+    EXPOSURE_WEIGHTED_PROPORTION: "weighted_exposure",
+    EXPOSURE_GROUPED: "grouped_exposure",
+})
+GROUP_TO_REFERENCE.update({
+    EXPOSURE_WEIGHTED_SUM: EXPOSURE_WEIGHTED_SUM,
+    EXPOSURE_WEIGHTED_PROPORTION: EXPOSURE_WEIGHTED_PROPORTION,
+    EXPOSURE_GROUPED: EXPOSURE_GROUPED,
+})
 
 
 def _canonical_core_collaborators(
@@ -187,7 +242,7 @@ def arm_target_fingerprint(
     contract: RandomizedNetworkArmMeanContractV1,
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
 ) -> str:
     """Fingerprint of q, g, queried unit and arm, not merely its support."""
     return _hash({
@@ -206,11 +261,13 @@ def make_complete_randomization_arm_spec(
     m: int,
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: Literal["strict_majority", "three_level_treated_neighbor_fraction", "pretreatment_core_collaborator_majority"] = EXPOSURE_E1,
     core_collaborators: Mapping[str, object] | None = None,
+    exposure_weights: Mapping[str, object] | None = None,
+    exposure_groups: Mapping[str, object] | None = None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -224,6 +281,7 @@ def make_complete_randomization_arm_spec(
         source=source, evidence=evidence, admitted=admitted,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         query_authority=query_authority, synthetic=synthetic,
         outcome_kind=outcome_kind,
     )
@@ -236,11 +294,13 @@ def make_two_group_quota_arm_spec(
     treated_quotas: tuple[int, int],
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: Literal["strict_majority", "three_level_treated_neighbor_fraction", "pretreatment_core_collaborator_majority"] = EXPOSURE_E1,
     core_collaborators: Mapping[str, object] | None = None,
+    exposure_weights: Mapping[str, object] | None = None,
+    exposure_groups: Mapping[str, object] | None = None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -262,6 +322,7 @@ def make_two_group_quota_arm_spec(
         source=source, evidence=evidence, admitted=admitted,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         query_authority=query_authority, synthetic=synthetic,
         outcome_kind=outcome_kind,
     )
@@ -273,11 +334,13 @@ def make_heterogeneous_bernoulli_arm_spec(
     propensities: dict[str, str],
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: Literal["strict_majority", "three_level_treated_neighbor_fraction", "pretreatment_core_collaborator_majority"] = EXPOSURE_E1,
     core_collaborators: Mapping[str, object] | None = None,
+    exposure_weights: Mapping[str, object] | None = None,
+    exposure_groups: Mapping[str, object] | None = None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -293,6 +356,7 @@ def make_heterogeneous_bernoulli_arm_spec(
         source=source, evidence=evidence, admitted=admitted,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         query_authority=query_authority, synthetic=synthetic,
         outcome_kind=outcome_kind,
     )
@@ -301,9 +365,11 @@ def make_heterogeneous_bernoulli_arm_spec(
 def make_cluster_bernoulli_arm_spec(
     network: NetworkExposureSpec, *, clusters: tuple[tuple[str, ...], ...],
     cluster_probabilities: tuple[str, ...], node_id: str,
-    own_treatment_value: int, exposure_value: int,
+    own_treatment_value: int, exposure_value: int | str,
     source: str, evidence: str, exposure_definition: str = EXPOSURE_E1,
     core_collaborators: Mapping[str,object] | None = None,
+    exposure_weights: Mapping[str,object] | None = None,
+    exposure_groups: Mapping[str,object] | None = None,
     admitted: bool = False, query_authority: str = 'PROPOSED',
     synthetic: bool = False, outcome_kind: str = 'continuous',
 ) -> IdentificationSpec:
@@ -315,15 +381,18 @@ def make_cluster_bernoulli_arm_spec(
         own_treatment_value=own_treatment_value, exposure_value=exposure_value,
         source=source, evidence=evidence, admitted=admitted,
         exposure_definition=exposure_definition,
-        core_collaborators=core_collaborators, query_authority=query_authority,
+        core_collaborators=core_collaborators, exposure_weights=exposure_weights,
+        exposure_groups=exposure_groups, query_authority=query_authority,
         synthetic=synthetic, outcome_kind=outcome_kind)
 
 
 def make_multi_group_quota_arm_spec(
     network: NetworkExposureSpec, *, groups: tuple[tuple[str,...],...],
     treated_quotas: tuple[int,...],node_id: str,own_treatment_value:int,
-    exposure_value:int,source:str,evidence:str,exposure_definition:str=EXPOSURE_E1,
-    core_collaborators:Mapping[str,object]|None=None,admitted:bool=False,
+    exposure_value:int | str,source:str,evidence:str,exposure_definition:str=EXPOSURE_E1,
+    core_collaborators:Mapping[str,object]|None=None,
+    exposure_weights:Mapping[str,object]|None=None,exposure_groups:Mapping[str,object]|None=None,
+    admitted:bool=False,
     query_authority:str='PROPOSED',synthetic:bool=False,
     outcome_kind:str='continuous',
 )->IdentificationSpec:
@@ -334,14 +403,16 @@ def make_multi_group_quota_arm_spec(
         own_treatment_value=own_treatment_value,exposure_value=exposure_value,
         source=source,evidence=evidence,admitted=admitted,
         exposure_definition=exposure_definition,core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights,exposure_groups=exposure_groups,
         query_authority=query_authority,synthetic=synthetic,outcome_kind=outcome_kind)
 
 
 def make_two_stage_quota_arm_spec(
     network: NetworkExposureSpec, *, groups: tuple[tuple[str,...],...],
     quota_profiles: tuple[tuple[int,...],...], profile_probabilities: tuple[str,...],
-    node_id:str, own_treatment_value:int, exposure_value:int, source:str,
+    node_id:str, own_treatment_value:int, exposure_value:int | str, source:str,
     evidence:str, exposure_definition:str=EXPOSURE_E1, core_collaborators=None,
+    exposure_weights=None, exposure_groups=None,
     admitted:bool=False, profile_exclusion_admitted:bool=False,
     query_authority:str='PROPOSED', synthetic:bool=False,
     outcome_kind:str='continuous',
@@ -358,6 +429,7 @@ def make_two_stage_quota_arm_spec(
         own_treatment_value=own_treatment_value,exposure_value=exposure_value,
         source=source,evidence=evidence,admitted=admitted,
         exposure_definition=exposure_definition,core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights,exposure_groups=exposure_groups,
         query_authority=query_authority,synthetic=synthetic,outcome_kind=outcome_kind)
     extra=Assumption(name=D6_EXCLUSION,
         source='demo_specification' if synthetic else 'human_confirmation',
@@ -377,11 +449,13 @@ def make_unequal_probability_fixed_quota_arm_spec(
     design: UnequalProbabilityFixedQuotaDesignV1,
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: Literal["strict_majority", "three_level_treated_neighbor_fraction", "pretreatment_core_collaborator_majority"] = EXPOSURE_E1,
     core_collaborators: Mapping[str, object] | None = None,
+    exposure_weights: Mapping[str, object] | None = None,
+    exposure_groups: Mapping[str, object] | None = None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -400,6 +474,7 @@ def make_unequal_probability_fixed_quota_arm_spec(
         source=source, evidence=evidence, admitted=admitted,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         query_authority=query_authority, synthetic=synthetic,
         outcome_kind=outcome_kind,
     )
@@ -411,11 +486,13 @@ def make_rerandomized_balanced_arm_spec(
     design: RerandomizedBalancedDesignV1,
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     exposure_definition: Literal["strict_majority", "three_level_treated_neighbor_fraction", "pretreatment_core_collaborator_majority"] = EXPOSURE_E1,
     core_collaborators: Mapping[str, object] | None = None,
+    exposure_weights: Mapping[str, object] | None = None,
+    exposure_groups: Mapping[str, object] | None = None,
     admitted: bool = False,
     query_authority: str = "PROPOSED",
     synthetic: bool = False,
@@ -434,6 +511,7 @@ def make_rerandomized_balanced_arm_spec(
         source=source, evidence=evidence, admitted=admitted,
         exposure_definition=exposure_definition,
         core_collaborators=core_collaborators,
+        exposure_weights=exposure_weights, exposure_groups=exposure_groups,
         query_authority=query_authority, synthetic=synthetic,
         outcome_kind=outcome_kind,
     )
@@ -445,15 +523,17 @@ def _make_randomized_arm_spec(
     design: CompleteRandomizationDesignV1 | TwoGroupFixedQuotaDesignV1 | HeterogeneousBernoulliDesignV1 | ClusterBernoulliDesignV24 | MultiGroupFixedQuotaDesignV25 | TwoStageQuotaMixtureDesignV27 | UnequalProbabilityFixedQuotaDesignV1 | RerandomizedBalancedDesignV1,
     node_id: str,
     own_treatment_value: int,
-    exposure_value: int,
+    exposure_value: int | str,
     source: str,
     evidence: str,
     admitted: bool,
     exposure_definition: str,
     core_collaborators: Mapping[str, object] | None,
-    query_authority: str,
-    synthetic: bool,
-    outcome_kind: str,
+    exposure_weights: Mapping[str, object] | None = None,
+    exposure_groups: Mapping[str, object] | None = None,
+    query_authority: str = "PROPOSED",
+    synthetic: bool = False,
+    outcome_kind: str = "continuous",
 ) -> IdentificationSpec:
     """Shared spec/assumption/query construction, never inferring assumptions.
 
@@ -466,20 +546,42 @@ def _make_randomized_arm_spec(
         raise ValueError("TRUSTED_FIXTURE is reserved for documented synthetic fixtures")
     if type(own_treatment_value) is not int or own_treatment_value not in (0, 1):
         raise ValueError("own_treatment_value must be 0 or 1")
-    if exposure_definition not in PUBLIC_TO_GROUP:
-        raise ValueError("unsupported exposure_definition for randomized-network arm")
-    grouping = PUBLIC_TO_GROUP[exposure_definition]
-    core = _canonical_core_collaborators(network, grouping, core_collaborators)
-    allowed_states = ExposureSpec(grouping,core).states_for_degree(
-        len(core[node_id]) if core is not None and node_id in core else network.degree_map().get(node_id,0))
-    if type(exposure_value) is not int or exposure_value not in allowed_states:
-        raise ValueError(f"exposure_value must be in {allowed_states}")
+    contract_extra = {}
+    if exposure_definition in W_G_GROUPINGS:
+        grouping = exposure_definition
+        core = None
+        if exposure_definition == EXPOSURE_GROUPED:
+            if not exposure_groups:
+                raise ValueError("grouped exposure requires exposure_groups")
+            exposure_obj = GroupedExposureSpec(groups={k: list(v) for k, v in exposure_groups.items()})
+            contract_extra = dict(exposure_groups={k: tuple(v) for k, v in exposure_groups.items()})
+        else:
+            if not exposure_weights:
+                raise ValueError("weighted exposure requires exposure_weights")
+            mode = "sum" if exposure_definition == EXPOSURE_WEIGHTED_SUM else "proportion"
+            exposure_obj = WeightedExposureSpec(weights=dict(exposure_weights), mode=mode)
+            contract_extra = dict(exposure_weights={k: str(v) for k, v in exposure_weights.items()})
+        try:
+            _state = queried_exposure_state(exposure_obj, exposure_value)
+        except (ValueError, TypeError, KeyError, ZeroDivisionError) as exc:
+            raise ValueError("exposure_value is not a valid weighted/grouped state") from exc
+        wire_state = exposure_state_str(exposure_obj, _state)
+    else:
+        if exposure_definition not in PUBLIC_TO_GROUP:
+            raise ValueError("unsupported exposure_definition for randomized-network arm")
+        grouping = PUBLIC_TO_GROUP[exposure_definition]
+        core = _canonical_core_collaborators(network, grouping, core_collaborators)
+        allowed_states = ExposureSpec(grouping,core).states_for_degree(
+            len(core[node_id]) if core is not None and node_id in core else network.degree_map().get(node_id,0))
+        if type(exposure_value) is not int or exposure_value not in allowed_states:
+            raise ValueError(f"exposure_value must be in {allowed_states}")
+        wire_state = exposure_value
     if node_id not in network.node_ids:
         raise ValueError("node_id must be a node in the declared network")
     if outcome_kind not in ("continuous", "binary"):
         raise ValueError("outcome_kind must be continuous or binary")
     contract = RandomizedNetworkArmMeanContractV1(
-        design=design, grouping=grouping, core_collaborators=core,
+        design=design, grouping=grouping, core_collaborators=core, **contract_extra,
     )
     if isinstance(design, CompleteRandomizationDesignV1):
         design_note = "complete randomization"
@@ -547,9 +649,9 @@ def _make_randomized_arm_spec(
         target_exposure_semantics="design_averaged_randomized_arm_mean",
         target_node_id=node_id,
         own_treatment_value=own_treatment_value,
-        exposure_value=exposure_value,
+        exposure_value=wire_state,
         response_target_fingerprint=arm_target_fingerprint(
-            network, contract, node_id, own_treatment_value, exposure_value
+            network, contract, node_id, own_treatment_value, wire_state
         ),
         authority=query_authority,
         evidence=[evidence],
@@ -563,6 +665,10 @@ def _make_randomized_arm_spec(
              if grouping == GROUP_E3 else
              "law conditioned on own treatment and exact treated-neighbor count. "
              if grouping == GROUP_E4 else
+             "law conditioned on own treatment and fixed weighted neighbour exposure. "
+             if grouping in (EXPOSURE_WEIGHTED_SUM, EXPOSURE_WEIGHTED_PROPORTION) else
+             "law conditioned on own treatment and grouped treated-neighbour counts. "
+             if grouping == EXPOSURE_GROUPED else
              "law conditioned on own treatment and any-treated-neighbor state. ")
             + "No exposure sufficiency or fixed-allocation policy welfare is asserted."
         ),
@@ -588,6 +694,10 @@ def _make_randomized_arm_spec(
             if grouping == GROUP_E3 else
             "The fixed network and one-hop neighbor-count signature were defined before treatment."
             if grouping == GROUP_E4 else
+            "The fixed network and fixed weighted neighbour exposure were defined before treatment."
+            if grouping in (EXPOSURE_WEIGHTED_SUM, EXPOSURE_WEIGHTED_PROPORTION) else
+            "The fixed network and fixed grouped neighbour sets were defined before treatment."
+            if grouping == EXPOSURE_GROUPED else
             "The fixed network and any-treated-neighbor signature were defined before treatment."
         ),
         "finite_conditional_first_moments": "Relevant potential-outcome absolute first moments are finite conditional on W.",
@@ -760,27 +870,41 @@ def _eligibility_error(spec: IdentificationSpec) -> str | None:
     if type(q.own_treatment_value) is not int or q.own_treatment_value not in (0, 1):
         return "INVALID_OWN_TREATMENT_STATE"
     grouping = contract.grouping
-    if grouping not in GROUP_TO_PUBLIC:
-        return "UNSUPPORTED_EXPOSURE_GROUPING"
-    reference_degree = (len(contract.core_collaborators[q.target_node_id])
-                        if grouping == GROUP_E3 and contract.core_collaborators
-                        else net.degree_map()[q.target_node_id])
-    if type(q.exposure_value) is not int or q.exposure_value not in ExposureSpec(grouping, contract.core_collaborators).states_for_degree(reference_degree):
-        return "INVALID_EXPOSURE_STATE"
-    try:
-        normalized_core = _canonical_core_collaborators(net, grouping, contract.core_collaborators)
-    except (ValueError, TypeError, KeyError) as exc:
-        return "CORE_COLLABORATOR_MAPPING_INVALID"
-    if normalized_core != contract.core_collaborators:
-        return "NONCANONICAL_CORE_COLLABORATOR_MAPPING"
-    if q.reference_exposure_definition != GROUP_TO_REFERENCE[grouping]:
-        return "EXPOSURE_QUERY_CONTRACT_MISMATCH"
-    if grouping == GROUP_E2 and net.degree_map()[q.target_node_id] == 0:
-        return "EXPOSURE_UNDEFINED_FOR_ISOLATED_NODE"
-    if q.response_target_fingerprint != arm_target_fingerprint(
-        net, contract, q.target_node_id, q.own_treatment_value, q.exposure_value
-    ):
-        return "DESIGN_DEPENDENT_TARGET_FINGERPRINT_MISMATCH"
+    if grouping in W_G_GROUPINGS:
+        try:
+            exposure_obj = exposure_object(contract)
+            state = queried_exposure_state(exposure_obj, q.exposure_value)
+        except (ValueError, TypeError, KeyError, ZeroDivisionError):
+            return "INVALID_EXPOSURE_STATE"
+        if q.reference_exposure_definition != grouping:
+            return "EXPOSURE_QUERY_CONTRACT_MISMATCH"
+        if q.response_target_fingerprint != arm_target_fingerprint(
+            net, contract, q.target_node_id, q.own_treatment_value,
+            exposure_state_str(exposure_obj, state),
+        ):
+            return "DESIGN_DEPENDENT_TARGET_FINGERPRINT_MISMATCH"
+    else:
+        if grouping not in GROUP_TO_PUBLIC:
+            return "UNSUPPORTED_EXPOSURE_GROUPING"
+        reference_degree = (len(contract.core_collaborators[q.target_node_id])
+                            if grouping == GROUP_E3 and contract.core_collaborators
+                            else net.degree_map()[q.target_node_id])
+        if type(q.exposure_value) is not int or q.exposure_value not in ExposureSpec(grouping, contract.core_collaborators).states_for_degree(reference_degree):
+            return "INVALID_EXPOSURE_STATE"
+        try:
+            normalized_core = _canonical_core_collaborators(net, grouping, contract.core_collaborators)
+        except (ValueError, TypeError, KeyError) as exc:
+            return "CORE_COLLABORATOR_MAPPING_INVALID"
+        if normalized_core != contract.core_collaborators:
+            return "NONCANONICAL_CORE_COLLABORATOR_MAPPING"
+        if q.reference_exposure_definition != GROUP_TO_REFERENCE[grouping]:
+            return "EXPOSURE_QUERY_CONTRACT_MISMATCH"
+        if grouping == GROUP_E2 and net.degree_map()[q.target_node_id] == 0:
+            return "EXPOSURE_UNDEFINED_FOR_ISOLATED_NODE"
+        if q.response_target_fingerprint != arm_target_fingerprint(
+            net, contract, q.target_node_id, q.own_treatment_value, q.exposure_value
+        ):
+            return "DESIGN_DEPENDENT_TARGET_FINGERPRINT_MISMATCH"
     domain = spec.domain(q.treatment)
     if domain is None or domain.kind != "binary" or set(domain.values or ()) != {0, 1}:
         return "BINARY_TREATMENT_REQUIRED"
@@ -881,7 +1005,8 @@ def joint_support_two_group(
 def _program(spec: IdentificationSpec) -> RandomizedNetworkArmMeanProgram:
     q = spec.query
     assert q.target_node_id is not None
-    assert type(q.own_treatment_value) is int and type(q.exposure_value) is int
+    assert type(q.own_treatment_value) is int and (
+        type(q.exposure_value) is int or isinstance(q.exposure_value, str))
     design = spec.randomized_network_arm_theorem_contract.design
     if isinstance(design, CompleteRandomizationDesignV1):
         assignment_fields = {"assignment_kind": "complete_randomization", "treated_quota": design.m}
@@ -904,13 +1029,23 @@ def _program(spec: IdentificationSpec) -> RandomizedNetworkArmMeanProgram:
                              "cluster_probabilities": design.cluster_probabilities}
     elif isinstance(design, UnequalProbabilityFixedQuotaDesignV1):
         assignment_fields = {"assignment_kind": "unequal_probability_fixed_quota",
-                             "task1_design": design}
+                             "extended_design": design}
     elif isinstance(design, RerandomizedBalancedDesignV1):
         assignment_fields = {"assignment_kind": "rerandomized_balanced",
-                             "task1_design": design}
+                             "extended_design": design}
     else:
         assignment_fields = {"assignment_kind": "heterogeneous_bernoulli",
                              "propensities": dict(design.propensities)}
+    contract = spec.randomized_network_arm_theorem_contract
+    exposure_fields = {}
+    if contract.grouping in W_G_GROUPINGS:
+        program_grouping = W_G_TO_PROGRAM[contract.grouping]
+        if contract.exposure_weights is not None:
+            exposure_fields["exposure_weights"] = dict(contract.exposure_weights)
+        if contract.exposure_groups is not None:
+            exposure_fields["exposure_groups"] = dict(contract.exposure_groups)
+    else:
+        program_grouping = GROUP_TO_PROGRAM[contract.grouping]
     return RandomizedNetworkArmMeanProgram(
         node_id=q.target_node_id,
         own_treatment_value=q.own_treatment_value,
@@ -919,10 +1054,11 @@ def _program(spec: IdentificationSpec) -> RandomizedNetworkArmMeanProgram:
         outcome=q.outcome,
         network_fingerprint=spec.network_exposure.semantic_fingerprint(),
         target_fingerprint=q.response_target_fingerprint,
-        grouping=GROUP_TO_PROGRAM[spec.randomized_network_arm_theorem_contract.grouping],
-        core_neighbor_ids=(spec.randomized_network_arm_theorem_contract.core_collaborators[q.target_node_id]
-                           if spec.randomized_network_arm_theorem_contract.grouping == GROUP_E3 else None),
+        grouping=program_grouping,
+        core_neighbor_ids=(contract.core_collaborators[q.target_node_id]
+                           if contract.grouping == GROUP_E3 else None),
         **assignment_fields,
+        **exposure_fields,
     )
 
 
@@ -1044,6 +1180,8 @@ def _expected_result_fields(spec: IdentificationSpec, support: Fraction) -> dict
         grouping_object = "S_i(u)=sum_{j in N(i)}u_j;exact one-hop treated-neighbor count"
     elif grouping == GROUP_E5:
         grouping_object = "S_i(u)=1{sum_{j in N(i)}u_j>0};isolates have S_i=0"
+    elif grouping in W_G_GROUPINGS:
+        grouping_object = W_G_TO_PROGRAM[grouping]
     else:
         grouping_object = (
             "Fixed pretreatment C_i subset N(i), |C_i|>0; "
@@ -1066,6 +1204,16 @@ def _expected_result_fields(spec: IdentificationSpec, support: Fraction) -> dict
             "exposure_states": [0, 1],
             "core_neighbor_ids": list(core),
             "core_reference_size": len(core),
+        }
+    elif grouping in W_G_GROUPINGS:
+        contract = spec.randomized_network_arm_theorem_contract
+        certificate_details = {
+            **certificate_details,
+            "exposure_grouping": grouping,
+            "exposure_weights": (dict(contract.exposure_weights)
+                                 if contract.exposure_weights is not None else None),
+            "exposure_groups": ({k: list(v) for k, v in contract.exposure_groups.items()}
+                                if contract.exposure_groups is not None else None),
         }
     return dict(
         status=IdentificationStatus.POINT,
@@ -1129,28 +1277,27 @@ class RandomizedNetworkArmBackend:
         if error:
             return _failure(spec, error)
         q, net = spec.query, spec.network_exposure
-        design = spec.randomized_network_arm_theorem_contract.design
-        grouping = spec.randomized_network_arm_theorem_contract.grouping
-        core = spec.randomized_network_arm_theorem_contract.core_collaborators
-        # One theorem path for all supported q x g combinations.  The input
-        # contract, certificate and downstream semantics remain v1-compatible.
-        if isinstance(design, (UnequalProbabilityFixedQuotaDesignV1, RerandomizedBalancedDesignV1)):
-            joint = SupportEngine.joint_support(
-                network=net,
-                assignment=AssignmentSpec(design),
-                exposure=ExposureSpec(grouping, core),
-                node_id=q.target_node_id,
-            )
-            pi = joint.get((q.own_treatment_value, q.exposure_value), Fraction(0))
-        else:
+        contract = spec.randomized_network_arm_theorem_contract
+        design = contract.design
+        exposure_obj = exposure_object(contract)
+        assignment = AssignmentSpec(design)
+        # Analytic count law for (D1-D6 x E1-E5); exact enumeration for the
+        # task-1 designs and for weighted/grouped exposures.
+        if isinstance(exposure_obj, ExposureSpec) and assignment.has_analytic_count_law:
             pi = SupportEngine.evaluate(
                 network=net,
-                assignment=AssignmentSpec(design),
-                exposure=ExposureSpec(grouping, core),
+                assignment=assignment,
+                exposure=exposure_obj,
                 node_id=q.target_node_id,
                 own_treatment_value=q.own_treatment_value,
                 exposure_value=q.exposure_value,
             ).joint_probability
+        else:
+            joint = SupportEngine.joint_support(
+                network=net, assignment=assignment, exposure=exposure_obj,
+                node_id=q.target_node_id)
+            state = queried_exposure_state(exposure_obj, q.exposure_value)
+            pi = joint.get((q.own_treatment_value, state), Fraction(0))
         if pi == 0:
             zero_support_detail = (
                 "The queried design-standardized conditional arm mean is undefined: "
@@ -1341,7 +1488,14 @@ def verify_randomized_network_arm(
         design = contract.design
         reference_nodes = (frozenset(contract.core_collaborators[q.target_node_id])
                            if contract.grouping == GROUP_E3 else None)
-        if isinstance(design, CompleteRandomizationDesignV1):
+        if contract.grouping in W_G_GROUPINGS:
+            exposure_obj = exposure_object(contract)
+            state = queried_exposure_state(exposure_obj, q.exposure_value)
+            report = _verify_joint_support(
+                network=net, design=AssignmentSpec(design), exposure=exposure_obj,
+                node_id=q.target_node_id, proposed={})
+            expected_support = report["oracle"].get((q.own_treatment_value, state), Fraction(0))
+        elif isinstance(design, CompleteRandomizationDesignV1):
             expected_support = _verify_joint_support_independently(
                 len(net.node_ids), design.m,
                 len(reference_nodes) if reference_nodes is not None else net.degree_map()[q.target_node_id],
@@ -1369,8 +1523,8 @@ def verify_randomized_network_arm(
                 q.exposure_value, contract.grouping, _verifier_matches_exposure,
                 reference_nodes=reference_nodes)
         elif isinstance(design, (UnequalProbabilityFixedQuotaDesignV1, RerandomizedBalancedDesignV1)):
-            report = _verify_task1_joint_support(
-                network=net, design=as_task1_dataclass(design),
+            report = _verify_joint_support(
+                network=net, design=as_design_dataclass(design),
                 exposure=ExposureSpec(contract.grouping, contract.core_collaborators),
                 node_id=q.target_node_id, proposed={},
             )

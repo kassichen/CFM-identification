@@ -1,9 +1,16 @@
-"""Task 1 target adapters: four POINT identification target families.
+"""Verification helper (NOT identification): four target-family value checks.
 
-They consume the unified exact support table from :class:`SupportEngine` and do
-not infer causal assumptions or outcomes: callers supply the potential-response
-table and explicitly confirm the required assumptions.  A requested cell without
-positive support therefore returns ``UNSUPPORTED`` rather than a point value.
+Given an explicitly supplied potential-response table, these functions compute
+the design-standardized target *values* and check positive support. They are an
+independent arithmetic oracle / audit aid for the four target families, e.g. for
+the combination lookup table.
+
+They are **not** a formal identification system and must never be cited as proof
+that formal policy identification is complete. Formal identification is the
+certificate path (``identify`` + the randomized-network arm backend / R1B policy
+backend), which consumes observed population information and issues a verified
+certificate bound to the theorem contract. These helpers only recompute expected
+values from outcomes the caller already has.
 """
 from __future__ import annotations
 
@@ -13,11 +20,11 @@ from itertools import product
 from collections.abc import Mapping, Callable
 from typing import Any, Literal
 
-from .assignment import AssignmentSpec
-from .exposure import ExposureSpec
-from .support import SupportEngine
-from .task1_assignment import MAX_EXACT_ENUMERATION_N
-from .task1_exposure import GroupedExposureSpec, WeightedExposureSpec
+from pfn_pipeline._internal.identification.randomized_arm_family.assignment import AssignmentSpec
+from pfn_pipeline._internal.identification.randomized_arm_family.exposure import ExposureSpec
+from pfn_pipeline._internal.identification.randomized_arm_family.support import SupportEngine
+from pfn_pipeline._internal.identification.randomized_arm_family.assignment_extensions import MAX_EXACT_ENUMERATION_N
+from pfn_pipeline._internal.identification.randomized_arm_family.exposure_extensions import GroupedExposureSpec, WeightedExposureSpec
 
 Status = Literal["POINT", "UNSUPPORTED"]
 
@@ -32,11 +39,19 @@ class TargetResult:
     population: tuple[str, ...] = ()
     unit_weights: tuple[tuple[str, Fraction], ...] = ()
     estimand: str = ""
+    # Separates the design-standardized contrast (computed here, no exposure
+    # sufficiency needed) from the stronger causal reading that additionally
+    # adopts exposure sufficiency.
+    exposure_sufficiency_adopted: bool | None = None
+    interpretation: str = ""
 
 
+# A design-standardized arm-mean contrast requires only the original design law
+# and consistency/finite means. Exposure sufficiency is NOT a required condition
+# for it; adopting it upgrades the *interpretation* to a causal effect.
 _REQUIRED_ASSUMPTIONS = {
-    "local_direct_mean": ("consistency", "random_assignment", "exposure_sufficiency"),
-    "peer_spillover_mean": ("consistency", "random_assignment", "exposure_sufficiency"),
+    "local_direct_mean": ("consistency", "random_assignment"),
+    "peer_spillover_mean": ("consistency", "random_assignment"),
     "policy_mean": ("consistency", "random_assignment"),
     "policy_contrast": ("consistency", "random_assignment"),
 }
@@ -53,17 +68,27 @@ def _network_nodes(network):
 def _gate(target: str, assumptions: Mapping[str, bool] | None) -> TargetResult | None:
     if assumptions is None:
         return TargetResult(target, "UNSUPPORTED", None,
-                            "causal assumptions were not explicitly confirmed")
+                            "design-standardized conditions were not explicitly confirmed")
     required = _REQUIRED_ASSUMPTIONS.get(target, ())
     missing = tuple(name for name in required if assumptions.get(name) is not True)
-    rejected = tuple(name for name, ok in assumptions.items() if ok is False)
+    rejected = tuple(name for name in required if assumptions.get(name) is False)
     if missing:
         return TargetResult(target, "UNSUPPORTED", None,
-                            "unconfirmed assumptions: " + ", ".join(missing))
+                            "unconfirmed conditions: " + ", ".join(missing))
     if rejected:
         return TargetResult(target, "UNSUPPORTED", None,
-                            "rejected assumptions: " + ", ".join(rejected))
+                            "rejected conditions: " + ", ".join(rejected))
     return None
+
+
+def _interpretation(target: str, assumptions: Mapping[str, bool] | None) -> tuple[bool | None, str]:
+    """Return (exposure_sufficiency_adopted, interpretation label)."""
+    if target in ("local_direct_mean", "peer_spillover_mean"):
+        adopted = None if assumptions is None else assumptions.get("exposure_sufficiency")
+        label = ("causal_effect_under_exposure_sufficiency" if adopted is True
+                 else "design_standardized_contrast")
+        return adopted, label
+    return None, "design_standardized_policy_value"
 
 
 def _outcome(table: Mapping[Any, Any], key: Any) -> Fraction | None:
@@ -100,11 +125,15 @@ def _population_and_weights(
 
 
 def _meta(target: str, population: tuple[str, ...], weights: Mapping[str, Fraction],
-          estimand: str, *, support: tuple[Any, ...] = ()) -> dict[str, Any]:
+          estimand: str, *, support: tuple[Any, ...] = (),
+          exposure_sufficiency_adopted: bool | None = None,
+          interpretation: str = "") -> dict[str, Any]:
     return {"population": population,
             "unit_weights": tuple((node, weights[node]) for node in population),
             "estimand": estimand,
-            "support": support}
+            "support": support,
+            "exposure_sufficiency_adopted": exposure_sufficiency_adopted,
+            "interpretation": interpretation}
 
 
 def _joint(network: Any, design: Any, exposure: Any, node: str):
@@ -143,6 +172,7 @@ def local_direct_mean(*, network: Any, design: Any,
     blocked = _gate(target, assumptions)
     if blocked:
         return blocked
+    suff, interp = _interpretation(target, assumptions)
     nodes = _network_nodes(network)
     selected, weights = _population_and_weights(nodes, population, unit_weights)
     estimand = f"E_w[Y_i(1,{exposure_state!r})-Y_i(0,{exposure_state!r})]"
@@ -156,20 +186,20 @@ def local_direct_mean(*, network: Any, design: Any,
             return TargetResult(target, "UNSUPPORTED", None,
                                 f"zero support for node {node!r} at exposure {exposure_state!r}",
                                 **_meta(target, selected, weights, estimand,
-                                        support=tuple(support)))
+                                        support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
         if _outcome(outcomes, (node, 1, exposure_state)) is None or \
            _outcome(outcomes, (node, 0, exposure_state)) is None:
             return TargetResult(target, "UNSUPPORTED", None,
                                 f"missing potential response for node {node!r}",
                                 **_meta(target, selected, weights, estimand,
-                                        support=tuple(support)))
+                                        support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
         support.extend(_positive_cells(node, joint))
     value = sum((weights[node] * (_outcome(outcomes, (node, 1, exposure_state))
                                   - _outcome(outcomes, (node, 0, exposure_state)))
                  for node in selected), Fraction(0))
     return TargetResult(target, "POINT", value,
                         "all requested own-treatment/exposure cells have positive support",
-                        **_meta(target, selected, weights, estimand, support=tuple(support)))
+                        **_meta(target, selected, weights, estimand, support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
 
 
 def peer_spillover_mean(*, network: Any, design: Any,
@@ -185,6 +215,7 @@ def peer_spillover_mean(*, network: Any, design: Any,
     blocked = _gate(target, assumptions)
     if blocked:
         return blocked
+    suff, interp = _interpretation(target, assumptions)
     nodes = _network_nodes(network)
     selected, weights = _population_and_weights(nodes, population, unit_weights)
     estimand = (f"E_w[Y_i({own_treatment_value},{exposed_state!r})"
@@ -197,20 +228,20 @@ def peer_spillover_mean(*, network: Any, design: Any,
             return TargetResult(target, "UNSUPPORTED", None,
                                 f"zero support for a peer exposure state at node {node!r}",
                                 **_meta(target, selected, weights, estimand,
-                                        support=tuple(support)))
+                                        support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
         if _outcome(outcomes, (node, own_treatment_value, exposed_state)) is None or \
            _outcome(outcomes, (node, own_treatment_value, reference_state)) is None:
             return TargetResult(target, "UNSUPPORTED", None,
                                 f"missing potential response for node {node!r}",
                                 **_meta(target, selected, weights, estimand,
-                                        support=tuple(support)))
+                                        support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
         support.extend(_positive_cells(node, joint))
     value = sum((weights[node] * (_outcome(outcomes, (node, own_treatment_value, exposed_state))
                                   - _outcome(outcomes, (node, own_treatment_value, reference_state)))
                  for node in selected), Fraction(0))
     return TargetResult(target, "POINT", value,
                         "both peer exposure cells have positive support",
-                        **_meta(target, selected, weights, estimand, support=tuple(support)))
+                        **_meta(target, selected, weights, estimand, support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
 
 
 def policy_mean(*, network: Any, design: Any,
@@ -224,6 +255,7 @@ def policy_mean(*, network: Any, design: Any,
     blocked = _gate(target, assumptions)
     if blocked:
         return blocked
+    suff, interp = _interpretation(target, assumptions)
     nodes = _network_nodes(network)
     selected, weights = _population_and_weights(nodes, population, unit_weights)
     estimand = "E_policy[Y(policy assignment)]"
@@ -240,7 +272,7 @@ def policy_mean(*, network: Any, design: Any,
             return TargetResult(target, "UNSUPPORTED", None,
                                 f"missing response for assignment {sorted(treated)!r}",
                                 **_meta(target, selected, weights, estimand,
-                                        support=tuple(support)))
+                                        support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
         y = y if isinstance(y, Fraction) else Fraction(str(y))
         total += probability
         value += probability * y
@@ -248,10 +280,10 @@ def policy_mean(*, network: Any, design: Any,
     if total == 0:
         return TargetResult(target, "UNSUPPORTED", None,
                             "assignment law has zero positive support",
-                            **_meta(target, selected, weights, estimand, support=tuple(support)))
+                            **_meta(target, selected, weights, estimand, support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
     return TargetResult(target, "POINT", value / total,
                         "all positive-probability assignments have responses",
-                        **_meta(target, selected, weights, estimand, support=tuple(support)))
+                        **_meta(target, selected, weights, estimand, support=tuple(support), exposure_sufficiency_adopted=suff, interpretation=interp))
 
 
 def policy_contrast(*, network: Any, design_a: Any, design_b: Any,
@@ -276,11 +308,11 @@ def policy_contrast(*, network: Any, design_a: Any, design_b: Any,
         return TargetResult(target, "UNSUPPORTED", None,
                             f"policy support failure: {left.reason}; {right.reason}",
                             population=left.population, unit_weights=left.unit_weights,
-                            estimand="E_policyA[Y]-E_policyB[Y]")
+                            estimand="E_policyA[Y]-E_policyB[Y]", interpretation="design_standardized_policy_value")
     return TargetResult(target, "POINT", left.value - right.value,
                         "both policy means are supported",
                         population=left.population, unit_weights=left.unit_weights,
-                        estimand="E_policyA[Y]-E_policyB[Y]")
+                        estimand="E_policyA[Y]-E_policyB[Y]", interpretation="design_standardized_policy_value")
 
 
 __all__ = ["TargetResult", "local_direct_mean", "peer_spillover_mean", "policy_mean", "policy_contrast"]

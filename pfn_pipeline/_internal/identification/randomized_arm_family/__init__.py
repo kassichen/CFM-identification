@@ -8,17 +8,13 @@ remain authoritative.
 from .assignment import AssignmentSpec, NeighborCountLaw
 from .exposure import ExposureSpec
 from .support import ArmSupportEvidence, SupportEngine
-from .task1_assignment import (
+from .assignment_extensions import (
     CovariateBalanceRule, RerandomizedBalancedDesign, UnequalProbabilityFixedQuotaDesign,
 )
-from .task1_exposure import GroupedExposureSpec, WeightedExposureSpec
-from .task1_targets import (
-    TargetResult, local_direct_mean, peer_spillover_mean, policy_mean, policy_contrast,
-)
+from .exposure_extensions import GroupedExposureSpec, WeightedExposureSpec
 
 __all__ = [
     "AssignmentSpec", "NeighborCountLaw", "ExposureSpec", "ArmSupportEvidence", "SupportEngine",
     "UnequalProbabilityFixedQuotaDesign", "RerandomizedBalancedDesign", "CovariateBalanceRule",
     "WeightedExposureSpec", "GroupedExposureSpec",
-    "TargetResult", "local_direct_mean", "peer_spillover_mean", "policy_mean", "policy_contrast",
 ]

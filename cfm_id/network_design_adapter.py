@@ -13,12 +13,35 @@ NATIVE_DESIGNS = {
     'CLUSTER_BERNOULLI': 'cluster_bernoulli_binary_v2_4',
     'MULTI_GROUP_FIXED_QUOTA': 'multi_group_fixed_quota_binary_v2_5',
     'TWO_STAGE_QUOTA_MIXTURE': 'two_stage_quota_mixture_binary_v2_7',
+    'UNEQUAL_PROBABILITY_FIXED_QUOTA': 'unequal_probability_fixed_quota_binary_v1',
+    'RERANDOMIZED_BALANCED': 'rerandomized_balanced_binary_v1',
 }
 
 
-def design_payload(assignment):
-    if assignment.kind not in NATIVE_DESIGNS or any(
-            getattr(assignment, name) is None for name in fields.DESIGN_FIELDS[assignment.kind]):
+def design_payload(assignment, *, nodes=None):
+    if assignment.kind not in NATIVE_DESIGNS:
+        raise ValueError('COMPLETE_SUPPORTED_DESIGN_REQUIRED')
+    if assignment.kind in ('UNEQUAL_PROBABILITY_FIXED_QUOTA', 'RERANDOMIZED_BALANCED'):
+        if nodes is None:
+            raise ValueError('TASK1_DESIGN_REQUIRES_NODE_ORDER')
+        law = assignment.treated_sets is not None and assignment.set_probabilities is not None
+        weights = assignment.unit_weights is not None
+        if not (law ^ weights):
+            raise ValueError('COMPLETE_SUPPORTED_DESIGN_REQUIRED')
+        base = dict(kind='unequal_probability_fixed_quota_binary_v1',
+                    nodes=tuple(nodes), m=assignment.fixed_count,
+                    treated_sets=(tuple(tuple(s) for s in assignment.treated_sets)
+                                  if assignment.treated_sets is not None else None),
+                    set_probabilities=(tuple(assignment.set_probabilities)
+                                       if assignment.set_probabilities is not None else None),
+                    unit_weights=(dict(assignment.unit_weights)
+                                  if assignment.unit_weights is not None else None))
+        if assignment.kind == 'UNEQUAL_PROBABILITY_FIXED_QUOTA':
+            return base
+        return dict(kind=NATIVE_DESIGNS[assignment.kind], base_design=base,
+                    balance_rule=dict(tolerance=assignment.balance_tolerance,
+                                      covariates=dict(assignment.balance_covariates)))
+    if any(getattr(assignment, name) is None for name in fields.DESIGN_FIELDS[assignment.kind]):
         raise ValueError('COMPLETE_SUPPORTED_DESIGN_REQUIRED')
     result = dict(kind=NATIVE_DESIGNS[assignment.kind])
     aliases = {'probabilities':'propensities', 'fixed_count':'m'}
@@ -31,9 +54,23 @@ def design_payload(assignment):
 
 
 def exposure_payload(exposure):
-    grouping = fields.EXPOSURE_GROUPS[exposure.kind]
+    """Reviewed exposure record -> native constructor kwargs.
+
+    E1-E5 -> {grouping, core_collaborators}; Task-1 weighted/grouped exposures
+    carry their exact weights+mode or groups, and the grouping label selects the
+    exact enumeration path in the native constructor.
+    """
     cores = exposure.core_collaborators
-    return dict(grouping=grouping, core_collaborators=None if cores is None else {n:tuple(v) for n,v in cores.items()})
+    if exposure.kind == 'WEIGHTED_EXPOSURE':
+        grouping = ('weighted_exposure_sum' if exposure.mode == 'sum'
+                    else 'weighted_exposure_proportion')
+        return dict(grouping=grouping, core_collaborators=None,
+                    exposure_weights=dict(exposure.weights))
+    if exposure.kind == 'GROUPED_EXPOSURE':
+        return dict(grouping='grouped_exposure', core_collaborators=None,
+                    exposure_groups={k: tuple(v) for k, v in exposure.groups.items()})
+    return dict(grouping=fields.EXPOSURE_GROUPS[exposure.kind],
+                core_collaborators=None if cores is None else {n: tuple(v) for n, v in cores.items()})
 
 
 def component_gaps(c, *, local_effect=False):

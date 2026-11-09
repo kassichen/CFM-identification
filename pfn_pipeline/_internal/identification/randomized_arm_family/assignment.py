@@ -19,7 +19,7 @@ from ..schemas import (
     UnequalProbabilityFixedQuotaDesignV1, RerandomizedBalancedDesignV1, CovariateBalanceRuleV1,
 )
 
-from .task1_assignment import (
+from .assignment_extensions import (
     RerandomizedBalancedDesign, UnequalProbabilityFixedQuotaDesign, CovariateBalanceRule,
 )
 
@@ -28,7 +28,7 @@ AssignmentDesign = (CompleteRandomizationDesignV1 | TwoGroupFixedQuotaDesignV1
                     | UnequalProbabilityFixedQuotaDesign | RerandomizedBalancedDesign)
 
 
-def as_task1_dataclass(design):
+def as_design_dataclass(design):
     """Convert a serializable task-1 wire design to its exact dataclass twin.
 
     The wire types carry JSON-serializable treated sets / weights / balance
@@ -45,7 +45,7 @@ def as_task1_dataclass(design):
             assignment_probabilities={frozenset(s): Fraction(p)
                                       for s, p in zip(design.treated_sets, design.set_probabilities)})
     if isinstance(design, RerandomizedBalancedDesignV1):
-        base = as_task1_dataclass(design.base_design)
+        base = as_design_dataclass(design.base_design)
         rule = CovariateBalanceRule(
             covariates={name: {n: Fraction(v) for n, v in values.items()}
                         for name, values in design.balance_rule.covariates.items()},
@@ -249,7 +249,7 @@ class AssignmentSpec:
 
     def __post_init__(self) -> None:
         if isinstance(self.design, (UnequalProbabilityFixedQuotaDesignV1, RerandomizedBalancedDesignV1)):
-            object.__setattr__(self, "design", as_task1_dataclass(self.design))
+            object.__setattr__(self, "design", as_design_dataclass(self.design))
         if not isinstance(self.design, (CompleteRandomizationDesignV1, TwoGroupFixedQuotaDesignV1,
                                         HeterogeneousBernoulliDesignV1, ClusterBernoulliDesignV24,
                                         MultiGroupFixedQuotaDesignV25, TwoStageQuotaMixtureDesignV27,

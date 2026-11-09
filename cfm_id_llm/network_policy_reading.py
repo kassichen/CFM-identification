@@ -85,6 +85,11 @@ class Assumptions(Record):
 class Exposure(Cited):
     kind: Literal['STRICT_MAJORITY_TIES_LOW', 'THREE_LEVEL_TREATED_NEIGHBOR_FRACTION', 'PRETREATMENT_CORE_COLLABORATOR_MAJORITY', 'EXACT_TREATED_NEIGHBOR_COUNT', 'ANY_TREATED_NEIGHBOR', 'WEIGHTED_EXPOSURE', 'GROUPED_EXPOSURE', 'NONE', 'OTHER', 'UNKNOWN']
     core_collaborators: dict[str,list[str]] | None = None
+    # Fixed-weight exposure: nonnegative neighbour weights and an exact mode.
+    weights: dict[str,str] | None = None
+    mode: Literal['sum', 'proportion'] | None = None
+    # Grouped exposure: per-group treated-neighbour counts, stable labels.
+    groups: dict[str,list[str]] | None = None
 
 
 class FirstStageExclusion(Cited):

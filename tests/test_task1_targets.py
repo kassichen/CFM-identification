@@ -1,7 +1,8 @@
 """Hand-computed checks for the four task-1 target families.
 
-The expected values below are worked out by hand for a 4-node fixture, so they
-act as an independent check on the arithmetic layered over SupportEngine.
+These are verification-helper checks, not formal identification: the helper
+recomputes target values from a supplied potential-response table. The formal
+identification route is the certificate path (``identify`` + backend).
 """
 from fractions import Fraction
 
@@ -9,9 +10,9 @@ from pfn_pipeline._internal.identification.schemas import (
     NetworkExposureSpec, CompleteRandomizationDesignV1)
 from pfn_pipeline._internal.identification.randomized_arm_family.assignment import AssignmentSpec
 from pfn_pipeline._internal.identification.randomized_arm_family.exposure import ExposureSpec
-from pfn_pipeline._internal.identification.randomized_arm_family.task1_assignment import (
+from pfn_pipeline._internal.identification.randomized_arm_family.assignment_extensions import (
     UnequalProbabilityFixedQuotaDesign)
-from pfn_pipeline._internal.identification.randomized_arm_family.task1_targets import (
+from tests.task1_target_helpers import (
     local_direct_mean, peer_spillover_mean, policy_mean, policy_contrast)
 
 NODES = ("a", "b", "c", "d")
@@ -110,4 +111,35 @@ def test_missing_assumptions_gate():
                                outcomes=arm_outcomes(), exposure_state=0,
                                assumptions=None)
     assert result.status == "UNSUPPORTED"
-    assert "assumptions" in result.reason
+    assert "not explicitly confirmed" in result.reason
+
+
+def test_design_standardized_does_not_require_exposure_sufficiency():
+    # Design-standardized contrast needs only consistency + random_assignment.
+    result = local_direct_mean(network=network(), design=d2(2), exposure=E1,
+                               outcomes=arm_outcomes(), exposure_state=0,
+                               assumptions={"consistency": True, "random_assignment": True})
+    assert result.status == "POINT"
+    assert result.interpretation == "design_standardized_contrast"
+    assert result.exposure_sufficiency_adopted is None
+
+
+def test_exposure_sufficiency_is_a_separate_interpretation():
+    result = local_direct_mean(network=network(), design=d2(2), exposure=E1,
+                               outcomes=arm_outcomes(), exposure_state=0,
+                               assumptions={"consistency": True, "random_assignment": True,
+                                            "exposure_sufficiency": True})
+    assert result.status == "POINT"
+    assert result.value == Fraction(4)  # numeric value unchanged by the extra interpretation
+    assert result.interpretation == "causal_effect_under_exposure_sufficiency"
+    assert result.exposure_sufficiency_adopted is True
+
+
+def test_rejecting_exposure_sufficiency_keeps_design_standardized_effect():
+    result = local_direct_mean(network=network(), design=d2(2), exposure=E1,
+                               outcomes=arm_outcomes(), exposure_state=0,
+                               assumptions={"consistency": True, "random_assignment": True,
+                                            "exposure_sufficiency": False})
+    assert result.status == "POINT"
+    assert result.interpretation == "design_standardized_contrast"
+    assert result.exposure_sufficiency_adopted is False
